@@ -22,8 +22,9 @@ class Game {
     this.clearTimer = 0;
     this.chainCount = 0;
 
-    this.fallingBlocks = [];
-    this._fallChain    = 0;
+    this.fallingBlocks  = [];
+    this._fallChain     = 0;
+    this._gravityDelay  = 0; // ms remaining before _startGravity fires after a swap
 
     this.riseTimer  = 0;
     this.comboStop  = 0;
@@ -104,6 +105,16 @@ class Game {
       }
     }
 
+    // Gravity delay: brief pause after swap so swapped position is visible before falling
+    if (this._gravityDelay > 0) {
+      this._gravityDelay -= dt;
+      if (this._gravityDelay <= 0) {
+        this._gravityDelay = 0;
+        this._startGravity(0);
+      }
+      return;
+    }
+
     // Animated gravity
     if (this.fallingBlocks.length > 0) {
       const rowsPerMs = FALL_SPEED / 1000;
@@ -151,7 +162,7 @@ class Game {
     this.abilities.emit('swapMade');
 
     if (this.state !== 'clearing' && this.fallingBlocks.length === 0) {
-      this._startGravity(0);
+      this._gravityDelay = 100; // show swapped position briefly before falling
     }
     return true;
   }
