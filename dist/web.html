@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TTY Tetris Attack</title>
+<title>Block Attack</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  background: #0d0d0d;
+  background: #1a1428;
   color: #eee;
-  font-family: monospace;
+  font-family: 'Segoe UI', system-ui, sans-serif;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -21,130 +21,144 @@ body {
 
 #wta-app {
   display: flex;
-  gap: 16px;
-  align-items: flex-start;
+  gap: 20px;
+  align-items: center;
 }
 
+/* ── Grid ── */
 #wta-grid-wrap {
   position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
 
 #wta-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: 0;
-  border: 1px solid #333;
+  gap: 3px;
+  padding: 3px;
+  background: #0e0b18;
 }
 
 #wta-grid.overclock {
-  box-shadow: 0 0 24px #f80, 0 0 8px #f80;
+  box-shadow: 0 0 32px #f80a, 0 0 8px #f80a;
 }
 
 .wta-cell {
-  /* Square cells that fill viewport height */
-  width: calc(100vh / 12);
-  height: calc(100vh / 12);
-  background: #111;
+  width: calc((100vh - 39px) / 12);
+  height: calc((100vh - 39px) / 12);
+  background: #1e1830;
+  border-radius: 20%;
 }
 
-.wta-cell[data-color="1"] { background: #c84040; }
-.wta-cell[data-color="2"] { background: #40a840; }
-.wta-cell[data-color="3"] { background: #3860c0; }
-.wta-cell[data-color="4"] { background: #b0a030; }
-.wta-cell[data-color="5"] { background: #9040a8; }
-.wta-cell[data-color="6"] { background: #30a0a0; }
+.wta-cell[data-color="1"] { background: #e05555; box-shadow: inset 0 2px 0 rgba(255,255,255,0.25); }
+.wta-cell[data-color="2"] { background: #4cbb5c; box-shadow: inset 0 2px 0 rgba(255,255,255,0.25); }
+.wta-cell[data-color="3"] { background: #4a7ee0; box-shadow: inset 0 2px 0 rgba(255,255,255,0.25); }
+.wta-cell[data-color="4"] { background: #e0b830; box-shadow: inset 0 2px 0 rgba(255,255,255,0.25); }
+.wta-cell[data-color="5"] { background: #b055cc; box-shadow: inset 0 2px 0 rgba(255,255,255,0.25); }
+.wta-cell[data-color="6"] { background: #30b8c0; box-shadow: inset 0 2px 0 rgba(255,255,255,0.25); }
 
-.wta-cell.falling[data-color="1"] { background: #e86060; }
-.wta-cell.falling[data-color="2"] { background: #60c860; }
-.wta-cell.falling[data-color="3"] { background: #5878e0; }
-.wta-cell.falling[data-color="4"] { background: #d0c050; }
-.wta-cell.falling[data-color="5"] { background: #b060c8; }
-.wta-cell.falling[data-color="6"] { background: #50c0c0; }
+.wta-cell.falling[data-color="1"] { background: #f07070; box-shadow: inset 0 2px 0 rgba(255,255,255,0.3); }
+.wta-cell.falling[data-color="2"] { background: #6ed87e; box-shadow: inset 0 2px 0 rgba(255,255,255,0.3); }
+.wta-cell.falling[data-color="3"] { background: #6898f0; box-shadow: inset 0 2px 0 rgba(255,255,255,0.3); }
+.wta-cell.falling[data-color="4"] { background: #f0d050; box-shadow: inset 0 2px 0 rgba(255,255,255,0.3); }
+.wta-cell.falling[data-color="5"] { background: #cc70e0; box-shadow: inset 0 2px 0 rgba(255,255,255,0.3); }
+.wta-cell.falling[data-color="6"] { background: #50d0d8; box-shadow: inset 0 2px 0 rgba(255,255,255,0.3); }
 
-/* Cursor: one unified box — left and right cells share the border */
-.wta-cell.cursor-left {
-  border-top: 2px solid #fff;
-  border-bottom: 2px solid #fff;
-  border-left: 2px solid #fff;
+/* Cursor overlay */
+#wta-cursor {
+  position: absolute;
+  border: 2.5px solid rgba(255,255,255,0.9);
+  border-radius: calc((100vh - 39px) / 12 * 0.2);
+  pointer-events: none;
+  box-sizing: border-box;
+  box-shadow: 0 0 8px rgba(255,255,255,0.4);
 }
-.wta-cell.cursor-right {
-  border-top: 2px solid #fff;
-  border-bottom: 2px solid #fff;
-  border-right: 2px solid #fff;
-}
-.wta-cell.cursor-mid {
-  border-top: 2px solid #fff;
-  border-bottom: 2px solid #fff;
-}
+#wta-cursor.hidden { display: none; }
 
+/* Clearing flash */
 @keyframes wta-flash {
-  0%,100% { opacity: 1; filter: brightness(2.2); }
-  50%     { opacity: 0.25; filter: brightness(0.4); }
+  0%,100% { opacity: 1; filter: brightness(1.8) saturate(0.3); }
+  50%     { opacity: 0.3; filter: brightness(0.5); }
 }
 .wta-cell.clearing {
-  animation: wta-flash 0.25s linear infinite;
+  animation: wta-flash 0.2s linear infinite;
 }
 
+/* Combo rainbow border */
 @keyframes wta-rainbow {
-  0%   { border-color: #f44; }
-  17%  { border-color: #fa4; }
-  33%  { border-color: #4f4; }
-  50%  { border-color: #4ff; }
-  67%  { border-color: #44f; }
-  83%  { border-color: #f4f; }
-  100% { border-color: #f44; }
+  0%   { outline-color: #f55; box-shadow: 0 0 20px #f55a; }
+  17%  { outline-color: #fa5; box-shadow: 0 0 20px #fa5a; }
+  33%  { outline-color: #5f5; box-shadow: 0 0 20px #5f5a; }
+  50%  { outline-color: #5ff; box-shadow: 0 0 20px #5ffa; }
+  67%  { outline-color: #55f; box-shadow: 0 0 20px #55fa; }
+  83%  { outline-color: #f5f; box-shadow: 0 0 20px #f5fa; }
+  100% { outline-color: #f55; box-shadow: 0 0 20px #f55a; }
 }
 #wta-grid.combo {
-  border: 2px solid #f44;
+  outline: 3px solid #f55;
   animation: wta-rainbow var(--rainbow-period, 0.6s) linear infinite;
 }
 
-/* Sidebar */
+/* ── Sidebar ── */
 #wta-sidebar {
-  width: 148px;
+  width: 160px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   max-height: 100vh;
   overflow-y: auto;
+  padding: 4px 0;
 }
 
 .wta-panel {
-  background: #161616;
-  border: 1px solid #2a2a2a;
-  padding: 8px 10px;
+  background: #241e38;
+  border-radius: 14px;
+  padding: 10px 14px;
 }
 
 .wta-panel h3 {
   font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  color: #555;
-  margin-bottom: 5px;
+  letter-spacing: 1.5px;
+  color: #7a6fa0;
+  margin-bottom: 4px;
 }
 
 .wta-panel .wta-val {
-  font-size: 20px;
-  font-weight: bold;
-  color: #ddd;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
 }
 
 .wta-panel .wta-sub {
   font-size: 10px;
-  color: #444;
-  margin-top: 2px;
+  color: #5a4f78;
+  margin-top: 3px;
+}
+
+#wta-pending {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f0c040;
+  min-height: 1.2em;
+  margin-top: 1px;
 }
 
 #wta-combo-bar-wrap {
-  height: 4px;
-  background: #2a2a2a;
-  margin-top: 6px;
+  height: 5px;
+  background: #16112a;
+  border-radius: 99px;
+  margin-top: 8px;
   overflow: hidden;
 }
 
 #wta-combo-bar {
   height: 100%;
-  background: #5af;
+  background: linear-gradient(90deg, #5af, #a0f);
+  border-radius: 99px;
   width: 0%;
   transition: width 0.1s linear;
 }
@@ -152,70 +166,140 @@ body {
 #wta-abilities {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
 }
 
 .wta-chip {
-  font-size: 10px;
-  padding: 2px 6px;
-  background: #1e1e1e;
-  border: 1px solid #333;
+  font-size: 11px;
+  padding: 4px 8px;
+  background: #16112a;
+  border-radius: 8px;
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  color: #ccc;
 }
 
-#wta-pending { font-size: 13px; color: #fa4; font-weight: bold; min-height: 1em; margin-top: 2px; }
-.wta-alevel { color: #c80; }
-.wta-dim { color: #3a3a3a; font-size: 10px; }
+.wta-alevel {
+  font-size: 10px;
+  font-weight: 700;
+  color: #f0c040;
+  background: #2a2040;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+
+.wta-dim { color: #4a4060; font-size: 10px; }
 
 #wta-keys {
   font-size: 10px;
-  color: #3a3a3a;
-  line-height: 1.8;
+  color: #4a4060;
+  line-height: 2;
 }
 
-/* Overlay */
+#wta-keys b {
+  color: #7a6fa0;
+}
+
+/* ── Overlay (game over / pause / pick) ── */
 #wta-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0,0,0,0.92);
+  background: rgba(14, 11, 24, 0.88);
+  backdrop-filter: blur(4px);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
+  border-radius: 13px;
 }
 
 #wta-overlay.hidden { display: none; }
 
 #wta-overlay h2 {
-  font-size: 18px;
-  letter-spacing: 3px;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 2px;
   text-transform: uppercase;
-  color: #ccc;
+  color: #fff;
+  margin-bottom: 4px;
 }
 
+.wta-go-score {
+  font-size: 36px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #f0c040, #f08040);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.wta-overlay-hint {
+  font-size: 11px;
+  color: #5a4f78;
+  margin-top: 4px;
+}
+
+/* Ability pick cards */
 .wta-pick {
-  background: #1a1a1a;
-  border: 1px solid #444;
-  padding: 9px 12px;
-  width: 200px;
+  background: #241e38;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  padding: 10px 14px;
+  width: 210px;
   cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s;
 }
-.wta-pick:hover { border-color: #888; }
+.wta-pick:hover {
+  border-color: #7a6fa0;
+  transform: scale(1.02);
+}
 
-.wta-pick-key  { color: #c80; font-size: 12px; font-weight: bold; margin-right: 5px; }
-.wta-pick-name { font-size: 13px; font-weight: bold; }
-.wta-pick-lvl  { font-size: 9px; color: #c80; margin-top: 2px; }
-.wta-pick-desc { font-size: 10px; color: #666; margin-top: 3px; }
+.wta-pick-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
 
-.wta-go-score { font-size: 26px; color: #c80; }
+.wta-pick-key {
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: #7a6fa0;
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+.wta-pick-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.wta-pick-lvl {
+  font-size: 10px;
+  font-weight: 700;
+  color: #f0c040;
+  background: #2a2040;
+  border-radius: 5px;
+  padding: 1px 5px;
+  margin-left: auto;
+}
+
+.wta-pick-desc {
+  font-size: 11px;
+  color: #7a6fa0;
+  line-height: 1.4;
+}
 </style>
 </head>
 <body>
 <div id="wta-app">
   <div id="wta-grid-wrap">
     <div id="wta-grid"></div>
+    <div id="wta-cursor" class="hidden"></div>
     <div id="wta-overlay" class="hidden"></div>
   </div>
   <div id="wta-sidebar">
@@ -239,11 +323,11 @@ body {
       <div id="wta-abilities"><span class="wta-dim">none yet</span></div>
     </div>
     <div class="wta-panel" id="wta-keys">
-      <b>Arrow / WASD</b> &mdash; move<br>
-      <b>Z / Space</b> &mdash; swap<br>
-      <b>X</b> &mdash; raise row<br>
-      <b>P</b> &mdash; pause<br>
-      <b>R</b> &mdash; restart
+      <b>Arrows / WASD</b> move<br>
+      <b>Z / Space</b> swap<br>
+      <b>X</b> raise row<br>
+      <b>P</b> pause<br>
+      <b>R</b> restart
     </div>
   </div>
 </div>
@@ -1059,6 +1143,7 @@ class WebRenderer {
     if (!this._built) this._build();
 
     const gridEl     = document.getElementById('wta-grid');
+    const cursorEl   = document.getElementById('wta-cursor');
     const overlayEl  = document.getElementById('wta-overlay');
     const scoreEl    = document.getElementById('wta-score');
     const levelEl    = document.getElementById('wta-level');
@@ -1095,19 +1180,26 @@ class WebRenderer {
         let cls = 'wta-cell';
         if (falling[r][c]) cls += ' falling';
         if (game.clearing.has(key)) cls += ' clearing';
-        if (showCursor && r === cr) {
-          if (wide) {
-            if (c === cc)     cls += ' cursor-left';
-            else if (c === cc+1) cls += ' cursor-mid';
-            else if (c === cc+2) cls += ' cursor-right';
-          } else {
-            if (c === cc)     cls += ' cursor-left';
-            else if (c === cc+1) cls += ' cursor-right';
-          }
-        }
 
         div.className = cls;
       }
+    }
+
+    // Cursor overlay — position from actual cell elements to account for gap/padding
+    if (showCursor) {
+      const span = (wide && cc <= COLS - 3) ? 3 : 2;
+      const c0 = this._cells[cr * COLS + cc];
+      const c1 = this._cells[cr * COLS + cc + span - 1];
+      const gridRect = gridEl.getBoundingClientRect();
+      const r0 = c0.getBoundingClientRect();
+      const r1 = c1.getBoundingClientRect();
+      cursorEl.style.left   = (r0.left - gridRect.left) + 'px';
+      cursorEl.style.top    = (r0.top  - gridRect.top)  + 'px';
+      cursorEl.style.width  = (r1.right - r0.left) + 'px';
+      cursorEl.style.height = r0.height + 'px';
+      cursorEl.classList.remove('hidden');
+    } else {
+      cursorEl.classList.add('hidden');
     }
 
     gridEl.classList.toggle('overclock', game.overclockMult > 1);
@@ -1160,19 +1252,21 @@ class WebRenderer {
         overlayEl.innerHTML = `
           <h2>Game Over</h2>
           <div class="wta-go-score">${game.score}</div>
-          <div class="wta-dim">press R to restart</div>`;
+          <div class="wta-overlay-hint">press R to restart</div>`;
       } else if (game.state === 'paused') {
         overlayEl.classList.remove('hidden');
-        overlayEl.innerHTML = `<h2>Paused</h2><div class="wta-dim">press P to resume</div>`;
+        overlayEl.innerHTML = `<h2>Paused</h2><div class="wta-overlay-hint">press P to resume</div>`;
       } else if (game.state === 'picking') {
         overlayEl.classList.remove('hidden');
         const opts = game.pickOptions.map((ab, i) => {
           const nextLvl = game.abilities.level(ab.id) + 1;
           const owned   = game.abilities.level(ab.id) > 0;
           return `<div class="wta-pick" data-choice="${i}">
-            <span class="wta-pick-key">[${i+1}]</span>
-            <span class="wta-pick-name">${ab.name}</span>
-            ${owned ? `<div class="wta-pick-lvl">Upgrade \u2192 Level ${nextLvl}</div>` : ''}
+            <div class="wta-pick-header">
+              <span class="wta-pick-key">${i+1}</span>
+              <span class="wta-pick-name">${ab.name}</span>
+              ${owned ? `<span class="wta-pick-lvl">Lv ${nextLvl}</span>` : ''}
+            </div>
             <div class="wta-pick-desc">${ab.describe(nextLvl)}</div>
           </div>`;
         }).join('');

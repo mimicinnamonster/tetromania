@@ -28,6 +28,7 @@ class WebRenderer {
     if (!this._built) this._build();
 
     const gridEl     = document.getElementById('wta-grid');
+    const cursorEl   = document.getElementById('wta-cursor');
     const overlayEl  = document.getElementById('wta-overlay');
     const scoreEl    = document.getElementById('wta-score');
     const levelEl    = document.getElementById('wta-level');
@@ -64,19 +65,26 @@ class WebRenderer {
         let cls = 'wta-cell';
         if (falling[r][c]) cls += ' falling';
         if (game.clearing.has(key)) cls += ' clearing';
-        if (showCursor && r === cr) {
-          if (wide) {
-            if (c === cc)     cls += ' cursor-left';
-            else if (c === cc+1) cls += ' cursor-mid';
-            else if (c === cc+2) cls += ' cursor-right';
-          } else {
-            if (c === cc)     cls += ' cursor-left';
-            else if (c === cc+1) cls += ' cursor-right';
-          }
-        }
 
         div.className = cls;
       }
+    }
+
+    // Cursor overlay — position from actual cell elements to account for gap/padding
+    if (showCursor) {
+      const span = (wide && cc <= COLS - 3) ? 3 : 2;
+      const c0 = this._cells[cr * COLS + cc];
+      const c1 = this._cells[cr * COLS + cc + span - 1];
+      const gridRect = gridEl.getBoundingClientRect();
+      const r0 = c0.getBoundingClientRect();
+      const r1 = c1.getBoundingClientRect();
+      cursorEl.style.left   = (r0.left - gridRect.left) + 'px';
+      cursorEl.style.top    = (r0.top  - gridRect.top)  + 'px';
+      cursorEl.style.width  = (r1.right - r0.left) + 'px';
+      cursorEl.style.height = r0.height + 'px';
+      cursorEl.classList.remove('hidden');
+    } else {
+      cursorEl.classList.add('hidden');
     }
 
     gridEl.classList.toggle('overclock', game.overclockMult > 1);
@@ -129,19 +137,21 @@ class WebRenderer {
         overlayEl.innerHTML = `
           <h2>Game Over</h2>
           <div class="wta-go-score">${game.score}</div>
-          <div class="wta-dim">press R to restart</div>`;
+          <div class="wta-overlay-hint">press R to restart</div>`;
       } else if (game.state === 'paused') {
         overlayEl.classList.remove('hidden');
-        overlayEl.innerHTML = `<h2>Paused</h2><div class="wta-dim">press P to resume</div>`;
+        overlayEl.innerHTML = `<h2>Paused</h2><div class="wta-overlay-hint">press P to resume</div>`;
       } else if (game.state === 'picking') {
         overlayEl.classList.remove('hidden');
         const opts = game.pickOptions.map((ab, i) => {
           const nextLvl = game.abilities.level(ab.id) + 1;
           const owned   = game.abilities.level(ab.id) > 0;
           return `<div class="wta-pick" data-choice="${i}">
-            <span class="wta-pick-key">[${i+1}]</span>
-            <span class="wta-pick-name">${ab.name}</span>
-            ${owned ? `<div class="wta-pick-lvl">Upgrade \u2192 Level ${nextLvl}</div>` : ''}
+            <div class="wta-pick-header">
+              <span class="wta-pick-key">${i+1}</span>
+              <span class="wta-pick-name">${ab.name}</span>
+              ${owned ? `<span class="wta-pick-lvl">Lv ${nextLvl}</span>` : ''}
+            </div>
             <div class="wta-pick-desc">${ab.describe(nextLvl)}</div>
           </div>`;
         }).join('');
