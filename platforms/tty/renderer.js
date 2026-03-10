@@ -208,6 +208,7 @@ class Renderer {
       `${BOLD}Tetris Attack TTY${RST}`,
       '',
       `Score  ${String(game.score).padStart(7)}`,
+      game.pendingScore > 0 ? `\x1b[93m${BOLD}+${String(game.pendingScore).padStart(6)}${RST}` : '',
       `Level  ${String(game.level).padStart(7)}`,
       `Time   ${mm}:${ss}`,
       `Chain  ${chainStr}`,

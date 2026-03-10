@@ -19,6 +19,20 @@ const BUILDS = {
       'index.js',
     ],
   },
+  web: {
+    out:      'dist/web.html',
+    template: 'platforms/web/template.html',
+    files: [
+      'src/grid.js',
+      'src/abilities.js',
+      'src/abilityManager.js',
+      'src/game.js',
+      'platforms/web/input.js',
+      'platforms/web/renderer.js',
+      'platforms/web/index.js',
+      'src/engine.js',
+    ],
+  },
 };
 
 const target = process.argv[2] || 'tty';
@@ -29,22 +43,35 @@ if (!build) {
   process.exit(1);
 }
 
-const parts = ['#!/usr/bin/env node', "'use strict';", ''];
-
-for (const file of build.files) {
-  let src = fs.readFileSync(path.join(__dirname, file), 'utf8');
-  // Strip local require() lines and module.exports lines
+// Strip local require/module.exports from a source file
+function stripModuleGlue(src) {
   src = src.replace(/^(?:const|let|var)\s+.*require\(['"][./][^'"]*['"]\).*\n/gm, '');
   src = src.replace(/^module\.exports\s*=.*\n/gm, '');
+  return src.trim();
+}
+
+const parts = ["'use strict';", ''];
+
+for (const file of build.files) {
+  const src = fs.readFileSync(path.join(__dirname, file), 'utf8');
   parts.push(`// ── ${file} ─────────────────────────────────────`);
-  parts.push(src.trim());
+  parts.push(stripModuleGlue(src));
   parts.push('');
 }
 
-const out = path.join(__dirname, build.out);
-fs.mkdirSync(path.dirname(out), { recursive: true });
-fs.writeFileSync(out, parts.join('\n'));
-fs.chmodSync(out, 0o755);
+const script = parts.join('\n');
 
-const kb = (fs.statSync(out).size / 1024).toFixed(1);
+fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });
+
+if (build.template) {
+  const template = fs.readFileSync(path.join(__dirname, build.template), 'utf8');
+  const html = template.replace('{{SCRIPT}}', script);
+  fs.writeFileSync(path.join(__dirname, build.out), html);
+} else {
+  const out = path.join(__dirname, build.out);
+  fs.writeFileSync(out, `#!/usr/bin/env node\n${script}`);
+  fs.chmodSync(out, 0o755);
+}
+
+const kb = (fs.statSync(path.join(__dirname, build.out)).size / 1024).toFixed(1);
 console.log(`built ${target}  →  ${build.out}  (${kb} kB)`);

@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "build": "node build.js",
-    "build:tty": "node build.js tty"
+    "build": "node build.js tty",
+    "build:tty": "node build.js tty",
+    "build:web": "node build.js web"
   }
 }

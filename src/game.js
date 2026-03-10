@@ -36,13 +36,15 @@ class Game {
     this.overclockTimer = 0;
     this.wideswapReady  = false;
 
-    this.score = 0;
+    this.score        = 0;
+    this.pendingScore = 0; // accumulates during a chain, flushed to score when chain ends
     this.level = 1;
     this.time  = 0;
 
     this._nextMilestone  = 0;
     this.pickOptions     = []; // array of ability objects shown during 'picking'
     this._stateBeforePick = null;
+    this._pendingPick    = false; // milestone reached mid-chain; show pick after chain ends
 
     // 'playing' | 'falling' | 'clearing' | 'paused' | 'picking' | 'gameOver'
     this.state = 'playing';
@@ -160,9 +162,13 @@ class Game {
     const ability = this.pickOptions[choice];
     if (ability) this.abilities.pick(ability.id);
     this.pickOptions = [];
-    // Restore the state we interrupted (could be 'clearing' if milestone fired mid-clear)
-    this.state = this._stateBeforePick || 'playing';
-    this._stateBeforePick = null;
+    this._checkMilestone();
+    if (this._pendingPick) {
+      this._pendingPick = false;
+      // stay in 'picking' with the new options
+    } else {
+      this.state = 'playing';
+    }
   }
 
   togglePause() {
@@ -202,15 +208,22 @@ class Game {
 
       const chainMult = Math.pow(2, chainCount);
       const comboMult = this.comboCount;
-      this.score += Math.floor(this.clearing.size * 10 * chainMult * comboMult * this.level * this.overclockMult);
+      this.pendingScore += Math.floor(this.clearing.size * 10 * chainMult * comboMult * this.level * this.overclockMult);
 
       const freeze = (COMBO_STOP_BASE * this.comboCount + chainCount * COMBO_STOP_CHAIN) * this.level;
       this.comboStop = Math.min(this.freezeCap, Math.max(this.comboStop, freeze));
-
-      this._checkMilestone(); // may change state to 'picking'
     } else {
-      this.state      = 'playing';
-      this.chainCount = 0;
+      // Chain complete — flush pending points into score
+      this.score       += this.pendingScore;
+      this.pendingScore = 0;
+      this.chainCount   = 0;
+      this._checkMilestone(); // sets _pendingPick if milestone reached
+      if (this._pendingPick) {
+        this._pendingPick = false;
+        this.state = 'picking';
+      } else {
+        this.state = 'playing';
+      }
     }
   }
 
@@ -264,9 +277,8 @@ class Game {
       this._nextMilestone++;
       const options = this.abilities.getOptions(3);
       if (options.length > 0) {
-        this.pickOptions       = options;
-        this._stateBeforePick  = this.state; // remember 'clearing', 'playing', etc.
-        this.state             = 'picking';
+        this.pickOptions  = options;
+        this._pendingPick = true; // defer until chain fully resolves
       }
     }
   }
