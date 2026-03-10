@@ -22,7 +22,7 @@ src/abilities.js      ABILITIES array: all ability definitions (id, name, maxLev
 src/abilityManager.js AbilityManager class: tracks levels/cooldowns/counters, routes events
 
 platforms/tty/        TTY platform (terminal)
-  index.js            WebPlatform-equivalent: TtyPlatform class
+  index.js            TtyPlatform class
   renderer.js         ANSI/Unicode terminal output, diff renders only changed lines
   input.js            Raw-mode stdin, key-repeat logic, maps sequences → named events
 
@@ -62,6 +62,7 @@ The bundler strips `require()`/`module.exports` lines and injects all source fil
 | `LEVEL_UP_MS` | game.js | 30 000 ms |
 | `FALL_SPEED` | game.js | 18 rows/s |
 | `COMBO_STOP_BASE` | game.js | 1500 ms |
+| `COMBO_STOP_CHAIN` | game.js | 800 ms |
 | `MILESTONES` | game.js | [500, 1500, 3000, 5500, 9000, 14000, 21000, 30000, 42000] |
 | FPS | engine.js | 30 |
 
@@ -70,13 +71,13 @@ The bundler strips `require()`/`module.exports` lines and injects all source fil
 `'playing'` → `'clearing'` → `'falling'` → back to `'playing'`
 Interruptions: `'paused'`, `'picking'` (ability select), `'gameOver'`
 
-- **playing** — normal; swap triggers `_startGravity(0)`
+- **playing** — normal gameplay; swap triggers a 100ms `_gravityDelay`, then `_startGravity(0)`
 - **falling** — animated gravity; `fallingBlocks[]` entries track `{color, col, row, targetRow}`; on all landed calls `_checkMatches(chainCount)`
 - **clearing** — matched cells flash for `CLEAR_DURATION` ms, then `_resolveClearing` zeroes them and starts gravity for chain
-- **picking** — ability select screen; shown only after the full chain resolves (deferred via `_pendingPick` flag)
+- **picking** — ability select screen; shown only after the full chain resolves (deferred via `_pendingPick` flag); after each pick, milestones are rechecked immediately to handle multiple picks from one chain
 - **gameOver** — row 0 has blocks at rise time; R restarts
 
-Rise is blocked during `clearing`, while `fallingBlocks.length > 0`, or while `comboStop > 0`.
+Rise is blocked during `clearing`, while `fallingBlocks.length > 0`, while `_gravityDelay > 0`, or while `comboStop > 0`.
 
 ## Grid Convention
 
@@ -90,13 +91,17 @@ Rise is blocked during `clearing`, while `fallingBlocks.length > 0`, or while `c
 ```
 pendingScore += clearing.size × 10 × 2^chainCount × comboCount × level × overclockMult
   (pendingScore flushed into score when chain fully ends — no more matches)
-comboStop = min(freezeCap, max(comboStop, (COMBO_STOP_BASE × comboCount + chainCount × 800) × level))
+comboStop = min(freezeCap, max(comboStop, (COMBO_STOP_BASE × comboCount + chainCount × COMBO_STOP_CHAIN) × level))
 riseInterval = max(MIN_RISE_MS, BASE_RISE_MS - (level-1)×350 - floor(score/500)×80) × frenzyMult
 ```
 
 - `game.pendingScore` accumulates during clearing/falling; flushed to `game.score` at chain end
 - Milestones are checked after the flush; `_pendingPick` defers the pick screen until then
 - After each pick, milestones are rechecked immediately (handles multiple milestones from one chain)
+
+## Swap Gravity Delay
+
+After a swap, `_gravityDelay = 100` ms is set instead of immediately calling `_startGravity`. This gives a brief visual pause so the swapped block is clearly visible at its new position before falling — matching the classic Panel de Pon feel.
 
 ## Abilities System
 
@@ -120,6 +125,23 @@ riseInterval = max(MIN_RISE_MS, BASE_RISE_MS - (level-1)×350 - floor(score/500)
 - `game.overclockMult` / `game.overclockTimer` — Overclock score multiplier
 - `game.wideswapReady` — next swap covers 3 cells
 
+## All Abilities (src/abilities.js)
+
+| ID | Name | Max Lv | Trigger | Effect |
+|----|------|--------|---------|--------|
+| `anchor` | Anchor | 3 | onPick | Raises `freezeCap` by 2s per level (4→6→8→10s) |
+| `frenzy` | Frenzy | 3 | passive | While combo frozen: rise 25/50/100% slower |
+| `glacial` | Glacial | 3 | rowAdded | +0.3/0.5/0.8s combo freeze per new row |
+| `painter` | Painter | 3 | rowAdded | Injects matching pairs/triplets into new rows |
+| `rainmaker` | Rainmaker | 3 | rowAdded (counter) | Every 5/3/2 rows: replaces top row with one color |
+| `wideswap` | Wideswap | 3 | swapMade (counter) | Every 8/5/3 swaps: next swap covers 3 cells |
+| `echo` | Echo | 3 | beforeClear | 15/30/50% chance adjacent blocks join a clear |
+| `magnetism` | Magnetism | 3 | afterClear | Pulls 2/3/all same-color blocks toward cursor |
+| `aftershock` | Aftershock | 3 | chainFired | On x2+ chain: destroys 1/2/3 random blocks |
+| `overclock` | Overclock | 3 | chainFired | On x3+ chain: score ×2/3/4 for 8s |
+| `panicShield` | Panic Shield | 3 | tick | Stack >80%: auto-removes top row (30/20/10s cd) |
+| `colorblind` | Colorblind | 3 | comboEnded | Unifies 1/2/3 sparsest column(s) to majority color |
+
 ## TTY Renderer Notes
 
 - `blockW = cellHeight × 2` (cells wider than tall for visual square appearance)
@@ -128,14 +150,20 @@ riseInterval = max(MIN_RISE_MS, BASE_RISE_MS - (level-1)×350 - floor(score/500)
 - `_firstRender = true` forces full clear + redraw (set on resize or restart)
 - Colors `FG[1..6]`: bright red, green, blue, yellow, magenta, cyan
 - Rainbow border (`RAINBOW[]`) animates when `comboStop > 0`; speed scales with `comboLevel`
+- Pending score shown as yellow `+N` below score line during chain
 
 ## Web Renderer Notes
 
-- CSS grid of `.wta-cell` divs; `data-color` attribute drives block color via CSS
-- Rainbow border: `#wta-grid.combo` + `@keyframes wta-rainbow`; `--rainbow-period` CSS var controls speed
-- Overclock glow: `#wta-grid.overclock` box-shadow
-- Pending score shown as `+N` below score; cleared when chain ends
+- CSS grid of `.wta-cell` divs with `border-radius: 20%` and inset highlight box-shadow
+- Cell size: `calc((100vh - 39px) / 12)` — accounts for 3px padding×2 + 3px gap×11
+- Cursor: single absolutely-positioned `#wta-cursor` div using `getBoundingClientRect()` for exact placement; `border-radius: calc((100vh-39px)/12*0.2)` matches block rounding
+- Rainbow border: `#wta-grid.combo` + `@keyframes wta-rainbow` on `outline-color` + glow; `--rainbow-period` CSS var controls speed
+- Overclock glow: `#wta-grid.overclock` orange box-shadow
+- Pending score shown as `+N` in amber below score value
 - Clearing animation: `wta-flash` keyframes on `.wta-cell.clearing`
+- Ability pick cards: rounded cards with key badge, name, upgrade level; hover scales slightly
+- Game over: gradient text score, frosted glass overlay (`backdrop-filter: blur`)
+- Theme: deep purple `#1a1428` background, `#241e38` panels, system-ui font
 
 ## Key Bindings
 
