@@ -28,7 +28,7 @@ platforms/tty/        TTY platform (terminal)
 
 platforms/web/        Web platform (browser)
   index.js            WebPlatform class
-  renderer.js         DOM renderer: CSS grid cells, combo rainbow border, pending score
+  renderer.js         DOM renderer: CSS grid cells, smooth falling overlays, block animations
   input.js            Keyboard event handler
   template.html       HTML/CSS shell; {{SCRIPT}} replaced by build
 
@@ -59,11 +59,9 @@ The bundler strips `require()`/`module.exports` lines and injects all source fil
 | `CLEAR_DURATION` | game.js | 500 ms |
 | `BASE_RISE_MS` | game.js | 4000 ms |
 | `MIN_RISE_MS` | game.js | 500 ms |
-| `LEVEL_UP_MS` | game.js | 30 000 ms |
 | `FALL_SPEED` | game.js | 18 rows/s |
 | `COMBO_STOP_BASE` | game.js | 1500 ms |
 | `COMBO_STOP_CHAIN` | game.js | 800 ms |
-| `MILESTONES` | game.js | [500, 1500, 3000, 5500, 9000, 14000, 21000, 30000, 42000] |
 | FPS | engine.js | 30 |
 
 ## Game States
@@ -71,7 +69,7 @@ The bundler strips `require()`/`module.exports` lines and injects all source fil
 `'playing'` → `'clearing'` → `'falling'` → back to `'playing'`
 Interruptions: `'paused'`, `'picking'` (ability select), `'gameOver'`
 
-- **playing** — normal gameplay; swap triggers a 100ms `_gravityDelay`, then `_startGravity(0)`
+- **playing** — normal gameplay; swap triggers a 100ms `_gravityDelay`, then `_startGravity(0)`; swap during falling sets `_pendingGravity` flag to re-run gravity after the chain ends
 - **falling** — animated gravity; `fallingBlocks[]` entries track `{color, col, row, targetRow}`; on all landed calls `_checkMatches(chainCount)`
 - **clearing** — matched cells flash for `CLEAR_DURATION` ms, then `_resolveClearing` zeroes them and starts gravity for chain
 - **picking** — ability select screen; shown only after the full chain resolves (deferred via `_pendingPick` flag); after each pick, milestones are rechecked immediately to handle multiple picks from one chain
@@ -84,7 +82,7 @@ Rise is blocked during `clearing`, while `fallingBlocks.length > 0`, while `_gra
 - `grid[0]` = top row, `grid[ROWS-1]` = bottom
 - Cell value `0` = empty, `1–6` = block color
 - `clearing` is `Set<"r,c">` of cells in flash animation
-- Cursor `(cursorRow, cursorCol)` selects pair `[col, col+1]`; wideswap extends to `[col, col+1, col+2]`
+- Cursor `(cursorRow, cursorCol)` selects pair `[col, col+1]`
 
 ## Scoring
 
@@ -123,7 +121,6 @@ After a swap, `_gravityDelay = 100` ms is set instead of immediately calling `_s
 - `game.abilities.level(id)` → current level (0 if not owned)
 - `game.freezeCap` — max combo freeze ms (Anchor raises this)
 - `game.overclockMult` / `game.overclockTimer` — Overclock score multiplier
-- `game.wideswapReady` — next swap covers 3 cells
 
 ## All Abilities (src/abilities.js)
 
@@ -134,7 +131,6 @@ After a swap, `_gravityDelay = 100` ms is set instead of immediately calling `_s
 | `glacial` | Glacial | 3 | rowAdded | +0.3/0.5/0.8s combo freeze per new row |
 | `painter` | Painter | 3 | rowAdded | Injects matching pairs/triplets into new rows |
 | `rainmaker` | Rainmaker | 3 | rowAdded (counter) | Every 5/3/2 rows: replaces top row with one color |
-| `wideswap` | Wideswap | 3 | swapMade (counter) | Every 8/5/3 swaps: next swap covers 3 cells |
 | `echo` | Echo | 3 | beforeClear | 15/30/50% chance adjacent blocks join a clear |
 | `magnetism` | Magnetism | 3 | afterClear | Pulls 2/3/all same-color blocks toward cursor |
 | `aftershock` | Aftershock | 3 | chainFired | On x2+ chain: destroys 1/2/3 random blocks |
@@ -164,6 +160,21 @@ After a swap, `_gravityDelay = 100` ms is set instead of immediately calling `_s
 - Ability pick cards: rounded cards with key badge, name, upgrade level; hover scales slightly
 - Game over: gradient text score, frosted glass overlay (`backdrop-filter: blur`)
 - Theme: deep purple `#1a1428` background, `#241e38` panels, system-ui font
+
+### Web Animations
+
+Falling blocks use absolutely-positioned overlay divs (`.wta-falling-overlay`) that track `b.row` at sub-row precision — smooth continuous motion at any frame rate. Grid cells under falling blocks show empty.
+
+Per-cell animation classes (tracked in `_animCls[]`, cleared via `animationend`):
+- `landing` — squish (scaleY 0.65→1.08→1) when a falling block lands; skipped if cell is clearing
+- `swap-from-right` / `swap-from-left` — slide-in when adjacent cells exchange values (detected by comparing `_prevGrid` to current grid)
+- `appearing` — scale up from flat when a new bottom row arrives (rise detected by checking grid shifted up by 1 row)
+
+Animation restart pattern: set base className (no anim class) → single `void _cells[0].offsetWidth` reflow → add animation classes. This allows clean restarts without per-cell reflows.
+
+Rise detection: `game.grid[r] === prevGrid[r+1]` element-by-element for r=0..ROWS-2, plus bottom row changed. Only `_rise()` shifts all rows simultaneously, so no false positives.
+
+Landing detection: block in `_prevFalling` absent from current `fallingBlocks`, with `targetRow >= 0` (blocks removed by `_rise()` have `targetRow < 0` and must not trigger landing).
 
 ## Key Bindings
 

@@ -26,7 +26,8 @@ class Game {
 
     this.fallingBlocks  = [];
     this._fallChain     = 0;
-    this._gravityDelay  = 0; // ms remaining before _startGravity fires after a swap
+    this._gravityDelay   = 0; // ms remaining before _startGravity fires after a swap
+    this._pendingGravity = false; // swap happened during a fall; re-check gravity after
 
     this.riseTimer  = 0;
     this.comboStop  = 0;
@@ -151,6 +152,8 @@ class Game {
 
     if (this.state !== 'clearing' && this.fallingBlocks.length === 0) {
       this._gravityDelay = 100; // show swapped position briefly before falling
+    } else if (this.fallingBlocks.length > 0) {
+      this._pendingGravity = true; // re-check gravity after current fall resolves
     }
     return true;
   }
@@ -220,6 +223,9 @@ class Game {
       if (this._pendingPick) {
         this._pendingPick = false;
         this.state = 'picking';
+      } else if (this._pendingGravity) {
+        this._pendingGravity = false;
+        this._startGravity(0);
       } else {
         this.state = 'playing';
       }
@@ -250,7 +256,7 @@ class Game {
         else this.grid[b.fromRow][c] = b.color;
       });
     }
-    if (newFalling.length > 0) { this.fallingBlocks = newFalling; this.state = 'falling'; }
+    if (newFalling.length > 0) { this.fallingBlocks = newFalling; this.state = 'falling'; this._pendingGravity = false; }
     else this._checkMatches(chainAfter);
   }
 

@@ -4,30 +4,68 @@
 
 class WebRenderer {
   constructor() {
-    this._cells      = [];
-    this._built      = false;
-    this._overlayState = null; // tracks last state used to build the overlay
+    this._cells        = [];
+    this._built        = false;
+    this._overlayState = null;
+    this._fallingPool  = [];   // pool of overlay divs for smooth sub-row falling
+    this._prevFalling  = [];   // fallingBlocks snapshot {col, targetRow} from last frame
+    this._prevGrid     = null; // grid snapshot from last frame (for swap/rise detection)
+    this._layout       = null; // cached {originTop, originLeft, cellH, cellW, gapH, gapW}
+    this._animCls      = [];   // per-cell currently-running animation class string
   }
 
   _build() {
     const gridEl = document.getElementById('wta-grid');
     gridEl.innerHTML = '';
-    this._cells = [];
+    this._cells   = [];
+    this._animCls = [];
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const div = document.createElement('div');
         div.className = 'wta-cell';
         gridEl.appendChild(div);
         this._cells.push(div);
+        this._animCls.push('');
       }
     }
-    this._built = true;
+    this._built  = true;
+    this._layout = null;
+  }
+
+  _getLayout(gridEl) {
+    if (this._layout) return this._layout;
+    const gridRect = gridEl.getBoundingClientRect();
+    const r0 = this._cells[0].getBoundingClientRect();
+    const r1 = this._cells[COLS].getBoundingClientRect();
+    const c1 = this._cells[1].getBoundingClientRect();
+    this._layout = {
+      originTop:  r0.top  - gridRect.top,
+      originLeft: r0.left - gridRect.left,
+      cellH: r0.height,
+      cellW: r0.width,
+      gapH:  r1.top  - r0.bottom,
+      gapW:  c1.left - r0.right,
+    };
+    return this._layout;
+  }
+
+  _borrowFallingDiv(wrap) {
+    let div = this._fallingPool.find(d => !d._inUse);
+    if (!div) {
+      div = document.createElement('div');
+      div.className = 'wta-cell wta-falling-overlay';
+      wrap.appendChild(div);
+      this._fallingPool.push(div);
+    }
+    div._inUse = true;
+    return div;
   }
 
   render(game, now) {
     if (!this._built) this._build();
 
     const gridEl     = document.getElementById('wta-grid');
+    const wrap       = document.getElementById('wta-grid-wrap');
     const cursorEl   = document.getElementById('wta-cursor');
     const overlayEl  = document.getElementById('wta-overlay');
     const scoreEl    = document.getElementById('wta-score');
@@ -38,49 +76,136 @@ class WebRenderer {
     const comboBarEl = document.getElementById('wta-combo-bar');
     const abilEl     = document.getElementById('wta-abilities');
 
-    // Build display: grid + falling block overlay
-    const display  = game.grid.map(row => [...row]);
-    const falling  = Array.from({length: ROWS}, () => new Array(COLS).fill(false));
-    for (const b of game.fallingBlocks) {
-      const r = Math.min(ROWS-1, Math.round(b.row));
-      if (r >= 0 && display[r][b.col] === 0) {
-        display[r][b.col] = b.color;
-        falling[r][b.col] = true;
+    const layout = this._getLayout(gridEl);
+
+    // ── Detect grid rise (all rows shifted up by 1) ──────────────────────────
+    let risen = false;
+    if (this._prevGrid) {
+      let match = true;
+      for (let r = 0; r < ROWS - 1 && match; r++)
+        for (let c = 0; c < COLS && match; c++)
+          if (game.grid[r][c] !== this._prevGrid[r + 1][c]) match = false;
+      if (match) {
+        for (let c = 0; c < COLS; c++) {
+          if (game.grid[ROWS - 1][c] !== this._prevGrid[ROWS - 1][c]) { risen = true; break; }
+        }
       }
     }
 
-    // Cursor — only shown during active play states
-    const showCursor = game.state !== 'picking' && game.state !== 'gameOver';
-    const cr = game.cursorRow, cc = game.cursorCol;
+    // ── Detect swaps (adjacent cells that exchanged values) ──────────────────
+    const swapAnim = {}; // "r,c" → 'from-right' | 'from-left'
+    if (this._prevGrid && !risen) {
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS - 1; c++) {
+          const pA = this._prevGrid[r][c], pB = this._prevGrid[r][c + 1];
+          const cA = game.grid[r][c],      cB = game.grid[r][c + 1];
+          if (pA !== cA && pB !== cB && pA === cB && pB === cA) {
+            swapAnim[`${r},${c}`]     = 'from-right'; // new block came from the right
+            swapAnim[`${r},${c + 1}`] = 'from-left';  // new block came from the left
+          }
+        }
+      }
+    }
+
+    // ── Detect landings ──────────────────────────────────────────────────────
+    // A block "landed" if it was in _prevFalling but is no longer in fallingBlocks.
+    // Skip blocks whose targetRow < 0 — those were removed by _rise(), not by landing.
+    const nowFallingKeys = new Set(game.fallingBlocks.map(b => `${b.col},${b.targetRow}`));
+    const justLanded = new Set(); // "row,col"
+    for (const b of this._prevFalling) {
+      if (b.targetRow >= 0 && !nowFallingKeys.has(`${b.col},${b.targetRow}`))
+        justLanded.add(`${b.targetRow},${b.col}`);
+    }
+
+    // ── New bottom row cells appear on rise ──────────────────────────────────
+    const newBottomCells = new Set();
+    if (risen) {
+      for (let c = 0; c < COLS; c++)
+        if (game.grid[ROWS - 1][c] !== 0) newBottomCells.add(`${ROWS - 1},${c}`);
+    }
+
+    // ── Falling block overlay divs (smooth sub-row positioning) ──────────────
+    for (const d of this._fallingPool) d._inUse = false;
+    const fallingCells = new Set(); // "row,col" keys obscured by an overlay div
+
+    for (const b of game.fallingBlocks) {
+      if (b.row < 0) continue;
+      const div  = this._borrowFallingDiv(wrap);
+      div.dataset.color = b.color;
+      const top  = layout.originTop  + b.row * (layout.cellH + layout.gapH);
+      const left = layout.originLeft + b.col * (layout.cellW + layout.gapW);
+      div.style.cssText = `top:${top}px;left:${left}px;width:${layout.cellW}px;height:${layout.cellH}px;display:block`;
+      const roundRow = Math.min(ROWS - 1, Math.round(b.row));
+      if (roundRow >= 0) fallingCells.add(`${roundRow},${b.col}`);
+    }
+    for (const d of this._fallingPool) if (!d._inUse) d.style.display = 'none';
+
+    // ── Grid cells ───────────────────────────────────────────────────────────
+    // Animation strategy: set base className in the first pass, then after a single
+    // forced reflow, add animation classes. This allows CSS animations to restart
+    // cleanly. Running animations are maintained by re-including their class each frame
+    // (setting the same animation class again does NOT restart the animation).
+    const animNeeded = []; // [{idx, cls}] — cells starting a new animation this frame
 
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
-        const div   = this._cells[r * COLS + c];
-        const color = display[r][c];
-        const key   = `${r},${c}`;
+        const idx = r * COLS + c;
+        const div = this._cells[idx];
+        const key = `${r},${c}`;
+        const color      = fallingCells.has(key) ? 0 : game.grid[r][c];
+        const isClearing = game.clearing.has(key);
 
         div.dataset.color = color || '';
 
-        let cls = 'wta-cell';
-        if (falling[r][c]) cls += ' falling';
-        if (game.clearing.has(key)) cls += ' clearing';
+        // Determine if a new animation should start (clearing cells: no anim, their flash wins)
+        let newAnim = '';
+        if (!isClearing) {
+          if (swapAnim[key] && color !== 0)             newAnim = `swap-${swapAnim[key]}`;
+          else if (justLanded.has(key) && color !== 0)  newAnim = 'landing';
+          else if (newBottomCells.has(key))             newAnim = 'appearing';
+        }
 
-        div.className = cls;
+        // If the cell is clearing, kill any existing animation to avoid CSS conflict
+        const existingAnim = isClearing ? '' : this._animCls[idx];
+        if (isClearing && this._animCls[idx]) this._animCls[idx] = '';
+
+        if (newAnim) {
+          // Set base class now; animation class added after reflow below
+          div.className = 'wta-cell' + (isClearing ? ' clearing' : '');
+          animNeeded.push({ idx, cls: newAnim });
+        } else {
+          // Maintain existing running animation (re-adding same class doesn't restart it)
+          div.className = 'wta-cell' + (isClearing ? ' clearing' : '') + (existingAnim ? ' ' + existingAnim : '');
+        }
       }
     }
 
-    // Cursor overlay — position from actual cell elements to account for gap/padding
+    // Single forced reflow, then add all new animation classes
+    if (animNeeded.length > 0) {
+      void this._cells[0].offsetWidth;
+      for (const { idx, cls } of animNeeded) {
+        this._cells[idx].classList.add(cls);
+        this._animCls[idx] = cls;
+        const capturedIdx = idx, capturedCls = cls;
+        this._cells[idx].addEventListener('animationend', () => {
+          if (this._animCls[capturedIdx] === capturedCls) this._animCls[capturedIdx] = '';
+        }, { once: true });
+      }
+    }
+
+    // ── Cursor ───────────────────────────────────────────────────────────────
+    const showCursor = game.state !== 'picking' && game.state !== 'gameOver';
+    const cr = game.cursorRow, cc = game.cursorCol;
     if (showCursor) {
-      const span = 2;
       const c0 = this._cells[cr * COLS + cc];
-      const c1 = this._cells[cr * COLS + cc + span - 1];
+      const c1 = this._cells[cr * COLS + cc + 1];
       const gridRect = gridEl.getBoundingClientRect();
-      const r0 = c0.getBoundingClientRect();
-      const r1 = c1.getBoundingClientRect();
-      cursorEl.style.left   = (r0.left - gridRect.left) + 'px';
-      cursorEl.style.top    = (r0.top  - gridRect.top)  + 'px';
-      cursorEl.style.width  = (r1.right - r0.left) + 'px';
-      cursorEl.style.height = r0.height + 'px';
+      const b0 = c0.getBoundingClientRect();
+      const b1 = c1.getBoundingClientRect();
+      cursorEl.style.left   = (b0.left - gridRect.left) + 'px';
+      cursorEl.style.top    = (b0.top  - gridRect.top)  + 'px';
+      cursorEl.style.width  = (b1.right - b0.left) + 'px';
+      cursorEl.style.height = b0.height + 'px';
       cursorEl.classList.remove('hidden');
     } else {
       cursorEl.classList.add('hidden');
@@ -88,7 +213,6 @@ class WebRenderer {
 
     gridEl.classList.toggle('overclock', game.overclockMult > 1);
 
-    // Rainbow border during combo freeze
     if (game.comboStop > 0) {
       const period = Math.max(75, 600 / Math.pow(2, game.comboLevel - 1));
       gridEl.style.setProperty('--rainbow-period', (period * 6 / 1000).toFixed(3) + 's');
@@ -147,7 +271,7 @@ class WebRenderer {
           const owned   = game.abilities.level(ab.id) > 0;
           return `<div class="wta-pick" data-choice="${i}">
             <div class="wta-pick-header">
-              <span class="wta-pick-key">${i+1}</span>
+              <span class="wta-pick-key">${i + 1}</span>
               <span class="wta-pick-name">${ab.name}</span>
               ${owned ? `<span class="wta-pick-lvl">Lv ${nextLvl}</span>` : ''}
             </div>
@@ -164,10 +288,18 @@ class WebRenderer {
         overlayEl.classList.add('hidden');
       }
     }
+
+    // ── Save state for next frame ────────────────────────────────────────────
+    this._prevGrid    = game.grid.map(row => [...row]);
+    this._prevFalling = game.fallingBlocks.map(b => ({ col: b.col, targetRow: b.targetRow }));
   }
 
   reset() {
     this._overlayState = null;
+    this._prevGrid     = null;
+    this._prevFalling  = [];
+    this._layout       = null;
+    for (let i = 0; i < this._animCls.length; i++) this._animCls[i] = '';
   }
 }
 
