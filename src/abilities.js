@@ -67,7 +67,7 @@ const ABILITIES = [
     },
   },
 
-  // ── rainmaker and wideswap are counter-based, handled in AbilityManager ──
+  // ── rainmaker is counter-based, handled in AbilityManager ──
 
   {
     id: 'rainmaker',
@@ -75,16 +75,6 @@ const ABILITIES = [
     maxLevel: 3,
     describe: (lvl) => `Every ${[5, 3, 2][lvl - 1]} new rows: top row → one color`,
     // handled in AbilityManager._handleRainmaker()
-  },
-
-  // ── Swap-based ────────────────────────────────────────────────────────────
-
-  {
-    id: 'wideswap',
-    name: 'Wideswap',
-    maxLevel: 3,
-    describe: (lvl) => `Every ${[8, 5, 3][lvl - 1]} swaps: next swap covers 3 cells`,
-    // handled in AbilityManager._handleWideswap()
   },
 
   // ── Before clear (can add to clearing set) ───────────────────────────────

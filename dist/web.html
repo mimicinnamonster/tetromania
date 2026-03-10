@@ -480,7 +480,7 @@ const ABILITIES = [
     },
   },
 
-  // ── rainmaker and wideswap are counter-based, handled in AbilityManager ──
+  // ── rainmaker is counter-based, handled in AbilityManager ──
 
   {
     id: 'rainmaker',
@@ -488,16 +488,6 @@ const ABILITIES = [
     maxLevel: 3,
     describe: (lvl) => `Every ${[5, 3, 2][lvl - 1]} new rows: top row → one color`,
     // handled in AbilityManager._handleRainmaker()
-  },
-
-  // ── Swap-based ────────────────────────────────────────────────────────────
-
-  {
-    id: 'wideswap',
-    name: 'Wideswap',
-    maxLevel: 3,
-    describe: (lvl) => `Every ${[8, 5, 3][lvl - 1]} swaps: next swap covers 3 cells`,
-    // handled in AbilityManager._handleWideswap()
   },
 
   // ── Before clear (can add to clearing set) ───────────────────────────────
@@ -650,7 +640,6 @@ class AbilityManager {
   emit(event, ...args) {
     // Counter-based abilities handled before generic routing
     if (event === 'rowAdded')  this._handleRainmaker();
-    if (event === 'swapMade')  this._handleWideswap();
 
     for (const [id, level] of this.levels) {
       const ability = ABILITIES.find(a => a.id === id);
@@ -728,18 +717,6 @@ class AbilityManager {
     }
   }
 
-  _handleWideswap() {
-    const lvl = this.level('wideswap');
-    if (!lvl) return;
-    const threshold = [8, 5, 3][lvl - 1];
-    const count = (this._counters.get('wideswap') || 0) + 1;
-    if (count >= threshold) {
-      this._counters.set('wideswap', 0);
-      this.game.wideswapReady = true;
-    } else {
-      this._counters.set('wideswap', count);
-    }
-  }
 }
 
 // ── src/game.js ─────────────────────────────────────
@@ -779,7 +756,6 @@ class Game {
     this.freezeCap      = 5000;
     this.overclockMult  = 1;
     this.overclockTimer = 0;
-    this.wideswapReady  = false;
 
     this.score        = 0;
     this.pendingScore = 0; // accumulates during a chain, flushed to score when chain ends
@@ -886,18 +862,9 @@ class Game {
     const r = this.cursorRow, c = this.cursorCol;
     if (this.clearing.has(`${r},${c}`) || this.clearing.has(`${r},${c + 1}`)) return false;
 
-    if (this.wideswapReady && c <= COLS - 3) {
-      // 3-cell rotation: [a, b, c] → [c, a, b]
-      const tmp       = this.grid[r][c + 2];
-      this.grid[r][c + 2] = this.grid[r][c + 1];
-      this.grid[r][c + 1] = this.grid[r][c];
-      this.grid[r][c]     = tmp;
-      this.wideswapReady  = false;
-    } else {
-      const tmp           = this.grid[r][c];
-      this.grid[r][c]     = this.grid[r][c + 1];
-      this.grid[r][c + 1] = tmp;
-    }
+    const tmp           = this.grid[r][c];
+    this.grid[r][c]     = this.grid[r][c + 1];
+    this.grid[r][c + 1] = tmp;
 
     this.abilities.emit('swapMade');
 
@@ -1176,7 +1143,6 @@ class WebRenderer {
     // Cursor — only shown during active play states
     const showCursor = game.state !== 'picking' && game.state !== 'gameOver';
     const cr = game.cursorRow, cc = game.cursorCol;
-    const wide = showCursor && game.wideswapReady && cc <= COLS-3;
 
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
@@ -1196,7 +1162,7 @@ class WebRenderer {
 
     // Cursor overlay — position from actual cell elements to account for gap/padding
     if (showCursor) {
-      const span = (wide && cc <= COLS - 3) ? 3 : 2;
+      const span = 2;
       const c0 = this._cells[cr * COLS + cc];
       const c1 = this._cells[cr * COLS + cc + span - 1];
       const gridRect = gridEl.getBoundingClientRect();

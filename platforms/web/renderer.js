@@ -52,7 +52,6 @@ class WebRenderer {
     // Cursor — only shown during active play states
     const showCursor = game.state !== 'picking' && game.state !== 'gameOver';
     const cr = game.cursorRow, cc = game.cursorCol;
-    const wide = showCursor && game.wideswapReady && cc <= COLS-3;
 
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
@@ -72,7 +71,7 @@ class WebRenderer {
 
     // Cursor overlay — position from actual cell elements to account for gap/padding
     if (showCursor) {
-      const span = (wide && cc <= COLS - 3) ? 3 : 2;
+      const span = 2;
       const c0 = this._cells[cr * COLS + cc];
       const c1 = this._cells[cr * COLS + cc + span - 1];
       const gridRect = gridEl.getBoundingClientRect();

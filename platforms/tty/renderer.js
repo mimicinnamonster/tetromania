@@ -196,8 +196,6 @@ class Renderer {
       overclockStr = `\x1b[93m${BOLD}x${game.overclockMult} OVERCLOCK ${DIM}${secs}s${RST}`;
     }
 
-    const wideStr = game.wideswapReady ? `\x1b[96m${BOLD}WIDESWAP READY${RST}` : '';
-
     const stateTag = game.state === 'paused'   ? ` ${BOLD}\x1b[93m[PAUSED]${RST}`
                    : game.state === 'picking'  ? ` ${BOLD}\x1b[92m[PICK ABILITY]${RST}`
                    : game.state === 'clearing' ? ` ${DIM}[CLEARING]${RST}`
@@ -215,7 +213,6 @@ class Renderer {
       `Combo  ${comboStr}`,
       stateTag,
       overclockStr,
-      wideStr,
       '',
       `${DIM}Controls${RST}`,
       `${DIM}←→↑↓   Move${RST}`,

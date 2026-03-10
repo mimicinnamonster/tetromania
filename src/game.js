@@ -37,7 +37,6 @@ class Game {
     this.freezeCap      = 5000;
     this.overclockMult  = 1;
     this.overclockTimer = 0;
-    this.wideswapReady  = false;
 
     this.score        = 0;
     this.pendingScore = 0; // accumulates during a chain, flushed to score when chain ends
@@ -144,18 +143,9 @@ class Game {
     const r = this.cursorRow, c = this.cursorCol;
     if (this.clearing.has(`${r},${c}`) || this.clearing.has(`${r},${c + 1}`)) return false;
 
-    if (this.wideswapReady && c <= COLS - 3) {
-      // 3-cell rotation: [a, b, c] → [c, a, b]
-      const tmp       = this.grid[r][c + 2];
-      this.grid[r][c + 2] = this.grid[r][c + 1];
-      this.grid[r][c + 1] = this.grid[r][c];
-      this.grid[r][c]     = tmp;
-      this.wideswapReady  = false;
-    } else {
-      const tmp           = this.grid[r][c];
-      this.grid[r][c]     = this.grid[r][c + 1];
-      this.grid[r][c + 1] = tmp;
-    }
+    const tmp           = this.grid[r][c];
+    this.grid[r][c]     = this.grid[r][c + 1];
+    this.grid[r][c + 1] = tmp;
 
     this.abilities.emit('swapMade');
 

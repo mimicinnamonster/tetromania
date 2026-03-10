@@ -21,7 +21,6 @@ class AbilityManager {
   emit(event, ...args) {
     // Counter-based abilities handled before generic routing
     if (event === 'rowAdded')  this._handleRainmaker();
-    if (event === 'swapMade')  this._handleWideswap();
 
     for (const [id, level] of this.levels) {
       const ability = ABILITIES.find(a => a.id === id);
@@ -99,18 +98,6 @@ class AbilityManager {
     }
   }
 
-  _handleWideswap() {
-    const lvl = this.level('wideswap');
-    if (!lvl) return;
-    const threshold = [8, 5, 3][lvl - 1];
-    const count = (this._counters.get('wideswap') || 0) + 1;
-    if (count >= threshold) {
-      this._counters.set('wideswap', 0);
-      this.game.wideswapReady = true;
-    } else {
-      this._counters.set('wideswap', count);
-    }
-  }
 }
 
 module.exports = { AbilityManager };
