@@ -1,4 +1,4 @@
-const { ROWS, COLS } = require('./grid');
+const { ROWS, COLS } = require('../../src/grid');
 
 const RST  = '\x1b[0m';
 const DIM  = '\x1b[2m';
