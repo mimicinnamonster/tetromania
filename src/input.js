@@ -58,6 +58,9 @@ class Input {
       case 'z': case ' ':    this._emit('swap');    break;
       case 'p':              this._emit('pause');   break;
       case 'r':              this._emit('restart'); break;
+      case '1':              this._emit('pick1');   break;
+      case '2':              this._emit('pick2');   break;
+      case '3':              this._emit('pick3');   break;
       case 'q': case '\x03': case '\x1b': this._emit('quit'); break;
     }
   }

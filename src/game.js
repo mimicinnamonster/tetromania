@@ -1,62 +1,98 @@
-const { ROWS, COLS, createGrid, generateRow, findMatches } = require('./grid');
+const { ROWS, COLS, createGrid, generateRow, findMatches, applyGravity } = require('./grid');
+const { AbilityManager } = require('./abilityManager');
 
-const CLEAR_DURATION  = 500;   // ms blocks flash before disappearing
-const BASE_RISE_MS    = 4000;  // ms between row rises at level 1
-const MIN_RISE_MS     = 500;   // fastest rise interval
-const LEVEL_UP_MS     = 30000; // ms between level increases
-const FALL_SPEED      = 18;    // rows per second for animated gravity
-const COMBO_STOP_BASE = 1500;  // ms rise is frozen after a clear
-const COMBO_STOP_CHAIN = 800;  // extra ms per chain link
+const CLEAR_DURATION   = 500;
+const BASE_RISE_MS     = 4000;
+const MIN_RISE_MS      = 500;
+const LEVEL_UP_MS      = 30000;
+const FALL_SPEED       = 18;
+const COMBO_STOP_BASE  = 1500;
+const COMBO_STOP_CHAIN = 800;
+
+// Score thresholds that trigger an ability pick screen
+const MILESTONES = [500, 1500, 3000, 5500, 9000, 14000, 21000, 30000, 42000];
 
 class Game {
   constructor() {
-    this.grid = createGrid();
+    this.grid      = createGrid();
     this.cursorRow = Math.floor(ROWS * 0.6);
     this.cursorCol = Math.floor(COLS / 2) - 1;
 
-    this.clearing   = new Set(); // "r,c" keys of cells currently flashing
+    this.clearing   = new Set();
     this.clearTimer = 0;
-    this.chainCount = 0;         // chain depth for current clearing sequence
+    this.chainCount = 0;
 
-    this.fallingBlocks = []; // {color, col, row (float), targetRow}
-    this._fallChain    = 0;  // chain to use when falling finishes
+    this.fallingBlocks = [];
+    this._fallChain    = 0;
 
-    this.riseTimer    = 0;
-    this.comboStop    = 0; // ms remaining where rise is frozen due to a combo
-    this.comboLevel   = 0; // total matches in current combo session (manual + chains)
-    this.comboCount   = 0; // same value, used to detect session reset
-    this.score  = 0;
-    this.level  = 1;
-    this.time   = 0; // total elapsed ms
+    this.riseTimer  = 0;
+    this.comboStop  = 0;
+    this.comboLevel = 0;
+    this.comboCount = 0;
 
-    // 'playing' | 'falling' | 'clearing' | 'paused' | 'gameOver'
+    // Ability-related state
+    this.freezeCap      = 5000;
+    this.overclockMult  = 1;
+    this.overclockTimer = 0;
+    this.wideswapReady  = false;
+
+    this.score = 0;
+    this.level = 1;
+    this.time  = 0;
+
+    this._nextMilestone  = 0;
+    this.pickOptions     = []; // array of ability objects shown during 'picking'
+    this._stateBeforePick = null;
+
+    // 'playing' | 'falling' | 'clearing' | 'paused' | 'picking' | 'gameOver'
     this.state = 'playing';
 
-    // Pre-fill the bottom half with blocks
+    this.abilities = new AbilityManager(this);
+
     for (let i = 0; i < Math.floor(ROWS / 2); i++) {
       this._addInitialRow();
     }
   }
 
   get riseInterval() {
-    const scorePenalty = Math.floor(this.score / 500) * 80; // -80ms per 500 pts
-    return Math.max(MIN_RISE_MS, BASE_RISE_MS - (this.level - 1) * 350 - scorePenalty);
+    const scorePenalty = Math.floor(this.score / 500) * 80;
+    let base = Math.max(MIN_RISE_MS, BASE_RISE_MS - (this.level - 1) * 350 - scorePenalty);
+    if (this.comboStop > 0) {
+      const frenzyLvl = this.abilities.level('frenzy');
+      if (frenzyLvl > 0) base *= [1.25, 1.5, 2.0][frenzyLvl - 1];
+    }
+    return base;
   }
 
   tick(dt) {
-    if (this.state === 'gameOver' || this.state === 'paused') return;
+    if (this.state === 'gameOver' || this.state === 'paused' || this.state === 'picking') return;
 
     this.time += dt;
     this.level = Math.floor(this.time / LEVEL_UP_MS) + 1;
 
-    // Rise is frozen while clearing/falling or during combo freeze window
+    // Overclock score-multiplier countdown
+    if (this.overclockTimer > 0) {
+      this.overclockTimer -= dt;
+      if (this.overclockTimer <= 0) { this.overclockTimer = 0; this.overclockMult = 1; }
+    }
+
+    // Combo freeze countdown
+    if (this.comboStop > 0) {
+      this.comboStop -= dt;
+      if (this.comboStop <= 0) {
+        this.comboStop  = 0;
+        this.comboCount = 0;
+        this.comboLevel = 0;
+        this.abilities.emit('comboEnded');
+      }
+    }
+
+    this.abilities.tick(dt);
+
+    // Rise is blocked while clearing, falling, or combo-frozen
     const riseBlocked = this.state === 'clearing' ||
                         this.fallingBlocks.length > 0 ||
                         this.comboStop > 0;
-    if (this.comboStop > 0) {
-      this.comboStop -= dt;
-      if (this.comboStop <= 0) this.comboCount = 0; // session over
-    }
     if (!riseBlocked) {
       this.riseTimer += dt;
       if (this.riseTimer >= this.riseInterval) {
@@ -66,7 +102,7 @@ class Game {
       }
     }
 
-    // Animate falling blocks (takes priority; clearing waits)
+    // Animated gravity
     if (this.fallingBlocks.length > 0) {
       const rowsPerMs = FALL_SPEED / 1000;
       let anyLanded = false;
@@ -80,46 +116,57 @@ class Game {
       }
       if (anyLanded) {
         this.fallingBlocks = this.fallingBlocks.filter(b => !b.landed);
-        if (this.fallingBlocks.length === 0) {
-          this._checkMatches(this._fallChain);
-        }
+        if (this.fallingBlocks.length === 0) this._checkMatches(this._fallChain);
       }
       return;
     }
 
-    // Count down clearing animation
     if (this.state === 'clearing') {
       this.clearTimer -= dt;
-      if (this.clearTimer <= 0) {
-        this._resolveClearing();
-      }
+      if (this.clearTimer <= 0) this._resolveClearing();
     }
   }
 
-  // Swap the two cells under the cursor, then start animated gravity
   swap() {
-    if (this.state === 'gameOver' || this.state === 'paused') return false;
+    if (this.state === 'gameOver' || this.state === 'paused' || this.state === 'picking') return false;
 
-    const r = this.cursorRow;
-    const c = this.cursorCol;
-
-    // Can't swap cells that are mid-clear
+    const r = this.cursorRow, c = this.cursorCol;
     if (this.clearing.has(`${r},${c}`) || this.clearing.has(`${r},${c + 1}`)) return false;
 
-    const tmp = this.grid[r][c];
-    this.grid[r][c] = this.grid[r][c + 1];
-    this.grid[r][c + 1] = tmp;
+    if (this.wideswapReady && c <= COLS - 3) {
+      // 3-cell rotation: [a, b, c] → [c, a, b]
+      const tmp       = this.grid[r][c + 2];
+      this.grid[r][c + 2] = this.grid[r][c + 1];
+      this.grid[r][c + 1] = this.grid[r][c];
+      this.grid[r][c]     = tmp;
+      this.wideswapReady  = false;
+    } else {
+      const tmp           = this.grid[r][c];
+      this.grid[r][c]     = this.grid[r][c + 1];
+      this.grid[r][c + 1] = tmp;
+    }
 
-    // Only trigger gravity+match when not already in a clearing/falling sequence
+    this.abilities.emit('swapMade');
+
     if (this.state !== 'clearing' && this.fallingBlocks.length === 0) {
       this._startGravity(0);
     }
-
     return true;
   }
 
+  // Called when the player presses 1/2/3 on the pick screen
+  pick(choice) {
+    if (this.state !== 'picking') return;
+    const ability = this.pickOptions[choice];
+    if (ability) this.abilities.pick(ability.id);
+    this.pickOptions = [];
+    // Restore the state we interrupted (could be 'clearing' if milestone fired mid-clear)
+    this.state = this._stateBeforePick || 'playing';
+    this._stateBeforePick = null;
+  }
+
   togglePause() {
-    if (this.state === 'playing')  this.state = 'paused';
+    if (this.state === 'playing') this.state = 'paused';
     else if (this.state === 'paused') this.state = 'playing';
   }
 
@@ -129,7 +176,7 @@ class Game {
   moveDown()  { if (this.cursorRow < ROWS - 1)  this.cursorRow++; }
 
   raise() {
-    if (this.state === 'gameOver' || this.state === 'paused') return;
+    if (this.state === 'gameOver' || this.state === 'paused' || this.state === 'picking') return;
     this._rise();
   }
 
@@ -143,18 +190,24 @@ class Game {
       this.chainCount = chainCount;
       this.state      = 'clearing';
 
-      // Every match (manual or chain) advances the combo session counter
+      // Echo: let adjacent blocks join the clearing set
+      this.abilities.emit('beforeClear');
+
+      // Notify chain-triggered abilities
+      if (chainCount > 0) this.abilities.emit('chainFired', chainCount);
+
+      // Combo session counter (manual + chains both count)
       this.comboCount++;
       this.comboLevel = this.comboCount;
 
-      // Score: base × chain multiplier (chains extra rewarding) × combo session × level
-      const chainMult = Math.pow(2, chainCount);       // chains double each link
-      const comboMult = this.comboCount;               // fast manual combos add linear bonus
-      this.score += matches.size * 10 * chainMult * comboMult * this.level;
+      const chainMult = Math.pow(2, chainCount);
+      const comboMult = this.comboCount;
+      this.score += Math.floor(this.clearing.size * 10 * chainMult * comboMult * this.level * this.overclockMult);
 
-      // Freeze: base from combo session depth, chains add extra on top, scales with level
       const freeze = (COMBO_STOP_BASE * this.comboCount + chainCount * COMBO_STOP_CHAIN) * this.level;
-      this.comboStop = Math.min(5000, Math.max(this.comboStop, freeze));
+      this.comboStop = Math.min(this.freezeCap, Math.max(this.comboStop, freeze));
+
+      this._checkMilestone(); // may change state to 'picking'
     } else {
       this.state      = 'playing';
       this.chainCount = 0;
@@ -162,78 +215,60 @@ class Game {
   }
 
   _resolveClearing() {
-    // Remove flashing cells
     for (const key of this.clearing) {
       const [r, c] = key.split(',').map(Number);
       this.grid[r][c] = 0;
     }
     this.clearing = new Set();
-
+    this.abilities.emit('afterClear');
     this._startGravity(this.chainCount + 1);
   }
 
-  // Animate all blocks that need to fall down to their destination
   _startGravity(chainAfter) {
     this._fallChain = chainAfter;
     const newFalling = [];
-
     for (let c = 0; c < COLS; c++) {
-      // Collect all blocks in this column top→bottom
       const blocks = [];
-      for (let r = 0; r < ROWS; r++) {
-        if (this.grid[r][c] !== 0) blocks.push({ color: this.grid[r][c], fromRow: r });
-      }
-      // Clear the column
+      for (let r = 0; r < ROWS; r++)
+        if (this.grid[r][c]) blocks.push({ color: this.grid[r][c], fromRow: r });
       for (let r = 0; r < ROWS; r++) this.grid[r][c] = 0;
-      // Pack blocks to the bottom, animating any that need to move
       blocks.forEach((b, i) => {
         const targetRow = ROWS - blocks.length + i;
-        if (targetRow !== b.fromRow) {
-          newFalling.push({ color: b.color, col: c, row: b.fromRow, targetRow });
-        } else {
-          this.grid[b.fromRow][c] = b.color; // already in place
-        }
+        if (targetRow !== b.fromRow) newFalling.push({ color: b.color, col: c, row: b.fromRow, targetRow });
+        else this.grid[b.fromRow][c] = b.color;
       });
     }
-
-    if (newFalling.length > 0) {
-      this.fallingBlocks = newFalling;
-      this.state = 'falling';
-    } else {
-      this._checkMatches(chainAfter);
-    }
+    if (newFalling.length > 0) { this.fallingBlocks = newFalling; this.state = 'falling'; }
+    else this._checkMatches(chainAfter);
   }
 
   _rise() {
-    // If any block is already in row 0, the stack has hit the ceiling
-    if (this.grid[0].some(v => v !== 0)) {
-      this.state = 'gameOver';
-      return;
-    }
-
-    // Shift every row up by one
-    for (let r = 0; r < ROWS - 1; r++) {
-      this.grid[r] = [...this.grid[r + 1]];
-    }
+    if (this.grid[0].some(v => v !== 0)) { this.state = 'gameOver'; return; }
+    for (let r = 0; r < ROWS - 1; r++) this.grid[r] = [...this.grid[r + 1]];
     this.grid[ROWS - 1] = generateRow(this.grid);
-
-    // Keep cursor from drifting off the top
     if (this.cursorRow > 0) this.cursorRow--;
-
-    // Adjust in-flight falling blocks
-    for (const b of this.fallingBlocks) {
-      b.row      -= 1;
-      b.targetRow -= 1;
-    }
+    for (const b of this.fallingBlocks) { b.row--; b.targetRow--; }
     this.fallingBlocks = this.fallingBlocks.filter(b => b.targetRow >= 0);
+    this.abilities.emit('rowAdded');
   }
 
   _addInitialRow() {
-    if (this.grid[0].some(v => v !== 0)) return; // don't push past the top
-    for (let r = 0; r < ROWS - 1; r++) {
-      this.grid[r] = [...this.grid[r + 1]];
-    }
+    if (this.grid[0].some(v => v !== 0)) return;
+    for (let r = 0; r < ROWS - 1; r++) this.grid[r] = [...this.grid[r + 1]];
     this.grid[ROWS - 1] = generateRow(this.grid);
+  }
+
+  _checkMilestone() {
+    if (this._nextMilestone >= MILESTONES.length) return;
+    if (this.score >= MILESTONES[this._nextMilestone]) {
+      this._nextMilestone++;
+      const options = this.abilities.getOptions(3);
+      if (options.length > 0) {
+        this.pickOptions       = options;
+        this._stateBeforePick  = this.state; // remember 'clearing', 'playing', etc.
+        this.state             = 'picking';
+      }
+    }
   }
 }
 

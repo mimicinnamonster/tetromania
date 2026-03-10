@@ -26,6 +26,9 @@ input
   .on('down',    () => game.moveDown())
   .on('swap',    () => game.swap())
   .on('raise',   () => game.raise())
+  .on('pick1',   () => game.pick(0))
+  .on('pick2',   () => game.pick(1))
+  .on('pick3',   () => game.pick(2))
   .on('pause',   () => game.togglePause());
 
 input.start();
