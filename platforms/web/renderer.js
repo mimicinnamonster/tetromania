@@ -1,6 +1,6 @@
 'use strict';
 
-// ROWS, COLS, ABILITIES, MILESTONES are injected by the build (concatenated from src/).
+// ROWS, COLS, ABILITIES, scoreToLevel are injected by the build (concatenated from src/).
 
 class WebRenderer {
   constructor() {
@@ -102,8 +102,8 @@ class WebRenderer {
     scoreEl.textContent = game.score;
     pendingEl.textContent = game.pendingScore > 0 ? `+${game.pendingScore}` : '';
     levelEl.textContent = game.level;
-    const next = MILESTONES[game._nextMilestone];
-    levelSubEl.textContent = next ? `next ability: ${next}` : 'max milestones';
+    const nextLevelScore = Math.round(500 * Math.pow(2, game.level - 1));
+    levelSubEl.textContent = `next level: ${nextLevelScore}`;
 
     // Combo bar
     if (game.comboStop > 0) {

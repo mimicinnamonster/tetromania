@@ -413,13 +413,15 @@ class AbilityManager {
 const CLEAR_DURATION   = 500;
 const BASE_RISE_MS     = 4000;
 const MIN_RISE_MS      = 500;
-const LEVEL_UP_MS      = 30000;
 const FALL_SPEED       = 18;
 const COMBO_STOP_BASE  = 1500;
 const COMBO_STOP_CHAIN = 800;
 
-// Score thresholds that trigger an ability pick screen
-const MILESTONES = [500, 1500, 3000, 5500, 9000, 14000, 21000, 30000, 42000];
+// Level is derived from score: level 1 = 0–499, level 2 = 500–999, level 3 = 1000–1999, ...
+// Each level threshold doubles: 500 × 2^(n-2) for n ≥ 2
+function scoreToLevel(score) {
+  return score < 500 ? 1 : 2 + Math.floor(Math.log2(score / 500));
+}
 
 class Game {
   constructor() {
@@ -451,10 +453,8 @@ class Game {
     this.level = 1;
     this.time  = 0;
 
-    this._nextMilestone  = 0;
-    this.pickOptions     = []; // array of ability objects shown during 'picking'
-    this._stateBeforePick = null;
-    this._pendingPick    = false; // milestone reached mid-chain; show pick after chain ends
+    this.pickOptions  = []; // array of ability objects shown during 'picking'
+    this._pendingPick = false; // level-up reached mid-chain; show pick after chain ends
 
     // 'playing' | 'falling' | 'clearing' | 'paused' | 'picking' | 'gameOver'
     this.state = 'playing';
@@ -467,8 +467,7 @@ class Game {
   }
 
   get riseInterval() {
-    const scorePenalty = Math.floor(this.score / 500) * 80;
-    let base = Math.max(MIN_RISE_MS, BASE_RISE_MS - (this.level - 1) * 350 - scorePenalty);
+    let base = Math.max(MIN_RISE_MS, BASE_RISE_MS - (this.level - 1) * 350);
     if (this.comboStop > 0) {
       const frenzyLvl = this.abilities.level('frenzy');
       if (frenzyLvl > 0) base *= [1.25, 1.5, 2.0][frenzyLvl - 1];
@@ -480,7 +479,6 @@ class Game {
     if (this.state === 'gameOver' || this.state === 'paused' || this.state === 'picking') return;
 
     this.time += dt;
-    this.level = Math.floor(this.time / LEVEL_UP_MS) + 1;
 
     // Overclock score-multiplier countdown
     if (this.overclockTimer > 0) {
@@ -582,7 +580,7 @@ class Game {
     const ability = this.pickOptions[choice];
     if (ability) this.abilities.pick(ability.id);
     this.pickOptions = [];
-    this._checkMilestone();
+    this._checkLevelUp();
     if (this._pendingPick) {
       this._pendingPick = false;
       // stay in 'picking' with the new options
@@ -637,7 +635,7 @@ class Game {
       this.score       += this.pendingScore;
       this.pendingScore = 0;
       this.chainCount   = 0;
-      this._checkMilestone(); // sets _pendingPick if milestone reached
+      this._checkLevelUp(); // sets _pendingPick if level increased
       if (this._pendingPick) {
         this._pendingPick = false;
         this.state = 'picking';
@@ -691,14 +689,14 @@ class Game {
     this.grid[ROWS - 1] = generateRow(this.grid);
   }
 
-  _checkMilestone() {
-    if (this._nextMilestone >= MILESTONES.length) return;
-    if (this.score >= MILESTONES[this._nextMilestone]) {
-      this._nextMilestone++;
+  _checkLevelUp() {
+    const newLevel = scoreToLevel(this.score);
+    if (newLevel > this.level) {
+      this.level = newLevel;
       const options = this.abilities.getOptions(3);
       if (options.length > 0) {
         this.pickOptions  = options;
-        this._pendingPick = true; // defer until chain fully resolves
+        this._pendingPick = true;
       }
     }
   }
