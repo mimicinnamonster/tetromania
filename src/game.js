@@ -52,6 +52,8 @@ class Game {
 
     this.abilities = new AbilityManager(this);
 
+    if (typeof DEBUG !== 'undefined' && DEBUG) this.abilities.pick('magnetism');
+
     for (let i = 0; i < Math.floor(ROWS / 2); i++) {
       this._addInitialRow();
     }
@@ -144,11 +146,12 @@ class Game {
     const r = this.cursorRow, c = this.cursorCol;
     if (this.clearing.has(`${r},${c}`) || this.clearing.has(`${r},${c + 1}`)) return false;
 
+    const colorA = this.grid[r][c], colorB = this.grid[r][c + 1];
     const tmp           = this.grid[r][c];
     this.grid[r][c]     = this.grid[r][c + 1];
     this.grid[r][c + 1] = tmp;
 
-    this.abilities.emit('swapMade');
+    this.abilities.emit('swapMade', colorA, colorB);
 
     if (this.state !== 'clearing' && this.fallingBlocks.length === 0) {
       this._gravityDelay = 100; // show swapped position briefly before falling

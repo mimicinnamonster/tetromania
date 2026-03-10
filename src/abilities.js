@@ -109,30 +109,65 @@ const ABILITIES = [
     id: 'magnetism',
     name: 'Magnetism',
     maxLevel: 3,
-    describe: (lvl) => [`Pull 2 same-color blocks toward cursor`, `Pull 3 blocks`, `Pull whole column`][lvl - 1],
-    onEvent: 'afterClear',
-    apply: (game, lvl) => {
-      const limit = lvl === 3 ? ROWS : lvl + 1;
-      const cr = game.cursorRow, cc = game.cursorCol;
-      // Find dominant color in cursor vicinity
-      const freq = new Array(7).fill(0);
-      for (let c = cc; c <= cc + 1; c++)
-        for (let r = Math.max(0, cr - 2); r <= Math.min(ROWS - 1, cr + 2); r++)
-          if (game.grid[r][c]) freq[game.grid[r][c]]++;
-      const color = freq.indexOf(Math.max(...freq.slice(1)));
-      if (!color) return;
-      let moved = 0;
-      for (let c = 0; c < COLS && moved < limit; c++) {
-        for (let r = 0; r < ROWS && moved < limit; r++) {
-          if (game.grid[r][c] === color && Math.abs(r - cr) > 1) {
-            const dir = cr > r ? 1 : -1;
-            const nr = r + dir;
-            if (nr >= 0 && nr < ROWS && game.grid[nr][c] === 0) {
-              game.grid[nr][c] = color;
-              game.grid[r][c] = 0;
-              moved++;
-            }
-          }
+    describe: (lvl) => `Same-color swap: pull matching blocks toward cursor in 2D (${['±2','±4','all'][lvl-1]} range)`,
+    onEvent: 'swapMade',
+    apply: (game, lvl, colorA, colorB) => {
+      if (!colorA || colorA !== colorB) return; // only same-color swaps
+      const color = colorA;
+      const colRadius = lvl === 3 ? 999 : lvl * 2;
+      const cc = game.cursorCol;
+      const cr = game.cursorRow;
+      const colMin = Math.max(0, cc - colRadius);
+      const colMax = Math.min(COLS - 1, cc + 1 + colRadius);
+      // Pull same-color blocks toward cursor. Each block moves in whichever direction
+      // (H or V) brings it closer. Cascades by iterating from far to close so each
+      // block can chain-move all the way through other blocks.
+      // H pass: left side (iterate left→right so blocks cascade toward cursor col)
+      for (let c = colMin; c < cc; c++) {
+        for (let r = 0; r < ROWS; r++) {
+          if (game.grid[r][c] !== color) continue;
+          const dx = cc - c;
+          const dy = Math.abs(r - cr);
+          if (dx < dy) continue; // V-dominant block — skip here, handled in V pass
+          const tmp = game.grid[r][c];
+          game.grid[r][c] = game.grid[r][c + 1];
+          game.grid[r][c + 1] = tmp;
+        }
+      }
+      // H pass: right side (iterate right→left)
+      for (let c = colMax; c > cc + 1; c--) {
+        for (let r = 0; r < ROWS; r++) {
+          if (game.grid[r][c] !== color) continue;
+          const dx = c - (cc + 1);
+          const dy = Math.abs(r - cr);
+          if (dx < dy) continue;
+          const tmp = game.grid[r][c];
+          game.grid[r][c] = game.grid[r][c - 1];
+          game.grid[r][c - 1] = tmp;
+        }
+      }
+      // V pass: above cursor (iterate top→bottom so blocks cascade toward cursor row)
+      for (let r = 0; r < cr; r++) {
+        for (let c = colMin; c <= colMax; c++) {
+          if (game.grid[r][c] !== color) continue;
+          const dx = c < cc ? cc - c : c > cc + 1 ? c - (cc + 1) : 0;
+          const dy = cr - r;
+          if (dy <= dx) continue; // H-dominant block — already handled above
+          const tmp = game.grid[r][c];
+          game.grid[r][c] = game.grid[r + 1][c];
+          game.grid[r + 1][c] = tmp;
+        }
+      }
+      // V pass: below cursor (iterate bottom→top)
+      for (let r = ROWS - 1; r > cr; r--) {
+        for (let c = colMin; c <= colMax; c++) {
+          if (game.grid[r][c] !== color) continue;
+          const dx = c < cc ? cc - c : c > cc + 1 ? c - (cc + 1) : 0;
+          const dy = r - cr;
+          if (dy <= dx) continue;
+          const tmp = game.grid[r][c];
+          game.grid[r][c] = game.grid[r - 1][c];
+          game.grid[r - 1][c] = tmp;
         }
       }
     },

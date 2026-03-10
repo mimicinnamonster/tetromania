@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Build Notes
+
+The bundler concatenates all source files into a single `'use strict'` script. Injected globals (e.g. `const DEBUG = ...`) are prepended at the top. Never use `var X = fallback` in source files to guard against missing globals — it will throw in strict mode if the bundler already declared `const X`. Use `typeof X !== 'undefined' && X` instead.
+
 ## Running the Game
 
 ```bash

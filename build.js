@@ -35,7 +35,9 @@ const BUILDS = {
   },
 };
 
-const target = process.argv[2] || 'tty';
+const args   = process.argv.slice(2);
+const debug  = args.includes('--debug');
+const target = args.find(a => !a.startsWith('--')) || 'tty';
 const build  = BUILDS[target];
 
 if (!build) {
@@ -50,7 +52,7 @@ function stripModuleGlue(src) {
   return src.trim();
 }
 
-const parts = ["'use strict';", ''];
+const parts = ["'use strict';", `const DEBUG = ${debug};`, ''];
 
 for (const file of build.files) {
   const src = fs.readFileSync(path.join(__dirname, file), 'utf8');
