@@ -256,14 +256,13 @@ class Game {
   _startGravity(chainAfter) {
     this._fallChain = chainAfter;
     const newFalling = [];
-    const H = this.grid.length;
     for (let c = 0; c < COLS; c++) {
       const blocks = [];
-      for (let r = 0; r < H; r++)
+      for (let r = 0; r < ROWS; r++)
         if (this.grid[r][c]) blocks.push({ color: this.grid[r][c], fromRow: r });
-      for (let r = 0; r < H; r++) this.grid[r][c] = 0;
+      for (let r = 0; r < ROWS; r++) this.grid[r][c] = 0;
       blocks.forEach((b, i) => {
-        const targetRow = H - blocks.length + i;
+        const targetRow = ROWS - blocks.length + i;
         if (targetRow !== b.fromRow) newFalling.push({ color: b.color, col: c, row: b.fromRow, targetRow });
         else this.grid[b.fromRow][c] = b.color;
       });
