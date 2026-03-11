@@ -1,5 +1,5 @@
 {
-  "name": "ttytetrisattack",
+  "name": "tetromania",
   "version": "1.0.0",
   "description": "Tetris Attack in the terminal",
   "main": "index.js",

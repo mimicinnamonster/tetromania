@@ -38,7 +38,7 @@ platforms/web/        Web platform (browser)
 
 index.js              TTY entry point (node index.js)
 build.js              Bundler: concatenates src + platform files → dist/
-dist/ttytetrisattack.js  Built TTY bundle (executable)
+dist/terminal.js  Built TTY bundle (executable)
 dist/web.html         Built single-file web app
 ```
 
@@ -46,7 +46,7 @@ dist/web.html         Built single-file web app
 
 ```bash
 node build.js          # builds TTY (default)
-node build.js tty      # builds TTY → dist/ttytetrisattack.js
+node build.js tty      # builds TTY → dist/terminal.js
 node build.js web      # builds web → dist/web.html
 npm run build          # alias for tty
 npm run build:web      # alias for web
