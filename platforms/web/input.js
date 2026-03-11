@@ -21,6 +21,8 @@ const KEY_MAP = {
   q: 'quit',
 };
 
+const SWIPE_THRESHOLD = 18; // px — minimum horizontal movement to count as a swap swipe
+
 class WebInput {
   constructor() {
     this._handlers  = new Map();
@@ -50,30 +52,51 @@ class WebInput {
   }
 
   _setupTouch() {
-    // Grid tap → move cursor to tapped cell
     const gridEl = document.getElementById('wta-grid');
     if (gridEl) {
+      let touchStartX = 0, touchStartY = 0;
+      let touchStartCol = 0, touchStartRow = 0;
+
+      gridEl.addEventListener('touchstart', e => {
+        e.preventDefault();
+        const t = e.touches[0];
+        touchStartX = t.clientX;
+        touchStartY = t.clientY;
+        const rect = gridEl.getBoundingClientRect();
+        touchStartCol = Math.floor(((t.clientX - rect.left) / rect.width)  * COLS);
+        touchStartRow = Math.floor(((t.clientY - rect.top)  / rect.height) * ROWS);
+        touchStartCol = Math.max(0, Math.min(COLS - 1, touchStartCol));
+        touchStartRow = Math.max(0, Math.min(ROWS - 1, touchStartRow));
+      }, { passive: false });
+
       gridEl.addEventListener('touchend', e => {
         e.preventDefault();
         const t = e.changedTouches[0];
-        const rect = gridEl.getBoundingClientRect();
-        const x = t.clientX - rect.left;
-        const y = t.clientY - rect.top;
-        const col = Math.floor((x / rect.width)  * COLS);
-        const row = Math.floor((y / rect.height) * ROWS);
-        const clampedCol = Math.max(0, Math.min(COLS - 2, col));
-        const clampedRow = Math.max(0, Math.min(ROWS - 1, row));
-        this._onInput(`moveto:${clampedRow},${clampedCol}`);
+        const dx = t.clientX - touchStartX;
+        const dy = t.clientY - touchStartY;
+
+        if (Math.abs(dx) >= SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy)) {
+          // Horizontal swipe → place cursor at the pair being swiped, then swap
+          let cursorCol;
+          if (dx > 0) {
+            // Swiping right: the left block of the pair is the touched column
+            cursorCol = Math.max(0, Math.min(COLS - 2, touchStartCol));
+          } else {
+            // Swiping left: the right block of the pair is the touched column
+            cursorCol = Math.max(0, Math.min(COLS - 2, touchStartCol - 1));
+          }
+          this._onInput(`moveto:${touchStartRow},${cursorCol}`);
+          this._onInput('swap');
+        } else {
+          // Tap (no meaningful swipe) → just move cursor
+          const cursorCol = Math.max(0, Math.min(COLS - 2, touchStartCol));
+          this._onInput(`moveto:${touchStartRow},${cursorCol}`);
+        }
       }, { passive: false });
     }
 
-    // Touch control buttons
+    // Small action buttons (raise / pause / restart)
     const btnMap = {
-      'wta-btn-left':    'left',
-      'wta-btn-right':   'right',
-      'wta-btn-up':      'up',
-      'wta-btn-down':    'down',
-      'wta-btn-swap':    'swap',
       'wta-btn-raise':   'raise',
       'wta-btn-pause':   'pause',
       'wta-btn-restart': 'restart',
@@ -81,20 +104,10 @@ class WebInput {
     for (const [id, event] of Object.entries(btnMap)) {
       const el = document.getElementById(id);
       if (!el) continue;
-      const repeatable = ['left', 'right', 'up', 'down', 'raise'].includes(event);
-      let repeatId = null;
       el.addEventListener('touchstart', e => {
         e.preventDefault();
         this._onInput(event);
-        if (repeatable) {
-          clearInterval(repeatId);
-          repeatId = setInterval(() => this._onInput(event), REPEAT_RATE);
-        }
       }, { passive: false });
-      if (repeatable) {
-        el.addEventListener('touchend',    () => { clearInterval(repeatId); repeatId = null; });
-        el.addEventListener('touchcancel', () => { clearInterval(repeatId); repeatId = null; });
-      }
     }
 
     // Ability pick card taps in overlay
@@ -105,6 +118,12 @@ class WebInput {
         card.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
       }
     }, { passive: false });
+
+    // Invalidate layout cache on resize / orientation change
+    window.addEventListener('resize', () => {
+      const renderer = window._wtaRenderer;
+      if (renderer) renderer.invalidateLayout();
+    });
   }
 
   _fire(key) {

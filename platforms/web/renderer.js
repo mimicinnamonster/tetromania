@@ -29,6 +29,7 @@ class WebRenderer {
         this._animCls.push('');
       }
     }
+    gridEl.style.gridTemplateRows = `repeat(${ROWS}, 1fr)`;
     this._built  = true;
     this._layout = null;
   }
@@ -210,11 +211,11 @@ class WebRenderer {
     if (showCursor) {
       const c0 = this._cells[cr * COLS + cc];
       const c1 = this._cells[cr * COLS + cc + 1];
-      const gridRect = gridEl.getBoundingClientRect();
+      const wrapRect = wrap.getBoundingClientRect();
       const b0 = c0.getBoundingClientRect();
       const b1 = c1.getBoundingClientRect();
-      cursorEl.style.left         = (b0.left - gridRect.left) + 'px';
-      cursorEl.style.top          = (b0.top  - gridRect.top)  + 'px';
+      cursorEl.style.left         = (b0.left - wrapRect.left) + 'px';
+      cursorEl.style.top          = (b0.top  - wrapRect.top)  + 'px';
       cursorEl.style.width        = (b1.right - b0.left) + 'px';
       cursorEl.style.height       = b0.height + 'px';
       cursorEl.style.borderRadius = (b0.height * 0.2) + 'px';
@@ -330,6 +331,10 @@ class WebRenderer {
     this._prevFalling  = [];
     this._layout       = null;
     for (let i = 0; i < this._animCls.length; i++) this._animCls[i] = '';
+  }
+
+  invalidateLayout() {
+    this._layout = null;
   }
 }
 

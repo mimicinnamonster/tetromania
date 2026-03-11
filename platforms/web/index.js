@@ -7,6 +7,7 @@ class WebPlatform {
   constructor() {
     this._input    = new WebInput();
     this._renderer = new WebRenderer();
+    window._wtaRenderer = this._renderer;
   }
 
   init(onInput) {
