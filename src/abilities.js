@@ -107,9 +107,10 @@ const ABILITIES = [
     id: 'echo',
     name: 'Echo',
     maxLevel: 3,
-    describe: (lvl) => `${[15, 30, 50][lvl - 1]}% chance adjacent blocks join a clear`,
+    describe: (lvl) => `On manual swap: ${[15, 30, 50][lvl - 1]}% chance adjacent blocks join a clear`,
     onEvent: 'beforeClear',
     apply: (game, lvl) => {
+      if (!game._swapPending) return;
       const chance = [0.15, 0.30, 0.50][lvl - 1];
       const extra = [];
       for (const key of game.clearing) {
@@ -220,9 +221,10 @@ const ABILITIES = [
     id: 'bomb',
     name: 'Bomb',
     maxLevel: 3,
-    describe: (lvl) => `On any clear: blast ${[2, 3, 4][lvl - 1]}×${[2, 3, 4][lvl - 1]} area at cursor`,
+    describe: (lvl) => `On manual swap: blast ${[2, 3, 4][lvl - 1]}×${[2, 3, 4][lvl - 1]} area at cursor`,
     onEvent: 'beforeClear',
     apply: (game, lvl) => {
+      if (!game._swapPending) return;
       const size = lvl + 1; // 2, 3, 4
       const cr = game.cursorRow, cc = game.cursorCol;
       for (let dr = 0; dr < size; dr++)

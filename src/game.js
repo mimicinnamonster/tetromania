@@ -157,6 +157,7 @@ class Game {
     this.grid[r][c]     = this.grid[r][c + 1];
     this.grid[r][c + 1] = tmp;
 
+    this._swapPending = true;
     this.abilities.emit('swapMade', colorA, colorB);
 
     if (this.state !== 'clearing' && this.fallingBlocks.length === 0) {
@@ -204,6 +205,7 @@ class Game {
     this.clearing = matches;
     // Always emit beforeClear so shape abilities can trigger independently
     this.abilities.emit('beforeClear');
+    this._swapPending = false;
     if (this.clearing.size > 0) {
       this.clearTimer = CLEAR_DURATION;
       this.chainCount = chainCount;
