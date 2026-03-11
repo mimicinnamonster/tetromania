@@ -34,15 +34,16 @@ class WebRenderer {
     this._layout = null;
   }
 
-  _getLayout(gridEl) {
+  _getLayout(gridEl, wrap) {
     if (this._layout) return this._layout;
-    const gridRect = gridEl.getBoundingClientRect();
+    // Origins must be relative to wrap (the positioned ancestor of overlay divs and cursor)
+    const wrapRect = wrap.getBoundingClientRect();
     const r0 = this._cells[0].getBoundingClientRect();
     const r1 = this._cells[COLS].getBoundingClientRect();
     const c1 = this._cells[1].getBoundingClientRect();
     this._layout = {
-      originTop:  r0.top  - gridRect.top,
-      originLeft: r0.left - gridRect.left,
+      originTop:  r0.top  - wrapRect.top,
+      originLeft: r0.left - wrapRect.left,
       cellH: r0.height,
       cellW: r0.width,
       gapH:  r1.top  - r0.bottom,
@@ -88,7 +89,7 @@ class WebRenderer {
 
     const setText = (els, val) => { for (const el of els) if (el) el.textContent = val; };
 
-    const layout = this._getLayout(gridEl);
+    const layout = this._getLayout(gridEl, wrap);
 
     // ── Detect grid rise (all rows shifted up by 1) ──────────────────────────
     let risen = false;
