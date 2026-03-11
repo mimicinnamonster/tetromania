@@ -136,7 +136,15 @@ After a swap, `_gravityDelay = 100` ms is set instead of immediately calling `_s
 | `painter` | Painter | 3 | rowAdded | Injects matching pairs/triplets into new rows |
 | `rainmaker` | Rainmaker | 3 | rowAdded (counter) | Every 5/3/2 rows: replaces top row with one color |
 | `echo` | Echo | 3 | beforeClear | 15/30/50% chance adjacent blocks join a clear |
-| `magnetism` | Magnetism | 3 | afterClear | Pulls 2/3/all same-color blocks toward cursor |
+| `transmute` | Transmute | 3 | blockLanded | Landing blocks recolor block below (33/66/100% chance) |
+| `bomb` | Bomb | 3 | beforeClear | On any clear: blast 2×2/3×3/4×4 area at cursor position |
+| `ripple` | Ripple | 3 | beforeClear | 30/60/100% chance same-color neighbors join a clear |
+| `lShape` | L-Shape | 3 | beforeClear | L-triominoes (lv1: touching match, lv2: matching color, lv3: any) clear |
+| `square` | Square | 3 | beforeClear | 2×2 same-color squares (lv1: touching, lv2: matching color, lv3: any) clear |
+| `diagonal` | Diagonal | 3 | beforeClear | Diagonal 3-runs (lv1: touching, lv2: matching color, lv3: any) clear |
+| `equalSign` | Equal Sign | 3 | beforeClear | Two parallel H or V lines of 3+ (lv1: touching, lv2: matching color, lv3: any) clear |
+| `zShape` | Z-Shape | 3 | beforeClear | Z/S-tetrominoes all 4 rotations (lv1: touching, lv2: matching color, lv3: any) clear |
+| `magnetism` | Magnetism | 3 | swapMade | Same-color swap: pull matching blocks toward cursor in 2D (±2/±4/all range) |
 | `aftershock` | Aftershock | 3 | chainFired | On x2+ chain: destroys 1/2/3 random blocks |
 | `overclock` | Overclock | 3 | chainFired | On x3+ chain: score ×2/3/4 for 8s |
 | `panicShield` | Panic Shield | 3 | tick | Stack >80%: auto-removes top row (30/20/10s cd) |

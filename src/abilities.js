@@ -2,6 +2,30 @@ const { ROWS, COLS, applyGravity } = require('./grid');
 
 function rnd(n) { return Math.floor(Math.random() * n); }
 
+// Returns the set of colors currently in game.clearing (grid values are intact during beforeClear)
+function clearingColors(game) {
+  const colors = new Set();
+  for (const k of game.clearing) {
+    const [r, c] = k.split(',').map(Number);
+    if (game.grid[r][c]) colors.add(game.grid[r][c]);
+  }
+  return colors;
+}
+
+// Try to add a shape (array of [r,c]) to clearing, respecting level conditions:
+//   lvl 1 — shape color must match a currently-clearing color
+//   lvl 2 — shape color must match a currently-clearing color (same, but abilities use it for extended range)
+//   lvl 3 — any single-color shape qualifies
+function tryAddShape(game, lvl, shape, cc) {
+  const color = game.grid[shape[0][0]][shape[0][1]];
+  if (!color) return;
+  if (!shape.every(([r, c]) => game.grid[r][c] === color)) return;
+  if (lvl < 3 && cc.size > 0 && !cc.has(color)) return;
+  const keys = shape.map(([r, c]) => `${r},${c}`);
+  if (typeof DEBUG !== 'undefined' && DEBUG) console.log('[shape] adding', keys, 'color', color, 'lvl', lvl);
+  for (const k of keys) game.clearing.add(k);
+}
+
 function shuffle(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -168,6 +192,218 @@ const ABILITIES = [
           const tmp = game.grid[r][c];
           game.grid[r][c] = game.grid[r - 1][c];
           game.grid[r - 1][c] = tmp;
+        }
+      }
+    },
+  },
+
+  // ── Block-landed ──────────────────────────────────────────────────────────
+
+  {
+    id: 'transmute',
+    name: 'Transmute',
+    maxLevel: 3,
+    describe: (lvl) => `Landing block's color transmutes the block below it (${[33, 66, 100][lvl - 1]}% chance)`,
+    onEvent: 'blockLanded',
+    apply: (game, lvl, landed) => {
+      const chance = [0.33, 0.66, 1.0][lvl - 1];
+      for (const b of landed) {
+        if (b.targetRow + 1 < ROWS && game.grid[b.targetRow + 1][b.col] && Math.random() < chance)
+          game.grid[b.targetRow + 1][b.col] = b.color;
+      }
+    },
+  },
+
+  // ── Before clear (shape detectors) ───────────────────────────────────────
+
+  {
+    id: 'bomb',
+    name: 'Bomb',
+    maxLevel: 3,
+    describe: (lvl) => `On any clear: blast ${[2, 3, 4][lvl - 1]}×${[2, 3, 4][lvl - 1]} area at cursor`,
+    onEvent: 'beforeClear',
+    apply: (game, lvl) => {
+      const size = lvl + 1; // 2, 3, 4
+      const cr = game.cursorRow, cc = game.cursorCol;
+      for (let dr = 0; dr < size; dr++)
+        for (let dc = 0; dc < size; dc++) {
+          const nr = cr + dr, nc = cc + dc;
+          if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && game.grid[nr][nc])
+            game.clearing.add(`${nr},${nc}`);
+        }
+    },
+  },
+
+  {
+    id: 'ripple',
+    name: 'Ripple',
+    maxLevel: 3,
+    describe: (lvl) => `${[30, 60, 100][lvl - 1]}% chance same-color neighbors join a clear`,
+    onEvent: 'beforeClear',
+    apply: (game, lvl) => {
+      const chance = [0.30, 0.60, 1.0][lvl - 1];
+      const cc = clearingColors(game);
+      const extra = [];
+      for (const key of game.clearing) {
+        const [r, c] = key.split(',').map(Number);
+        for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          const nr = r + dr, nc = c + dc;
+          if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS &&
+              game.grid[nr][nc] && cc.has(game.grid[nr][nc]) &&
+              !game.clearing.has(`${nr},${nc}`) && Math.random() < chance)
+            extra.push(`${nr},${nc}`);
+        }
+      }
+      for (const k of extra) game.clearing.add(k);
+    },
+  },
+
+  {
+    id: 'lShape',
+    name: 'L-Shape',
+    maxLevel: 3,
+    describe: (lvl) => [
+      'L-triominoes of clearing color also clear',
+      'L-triominoes of clearing color also clear',
+      'All L-triominoes clear',
+    ][lvl - 1],
+    onEvent: 'beforeClear',
+    apply: (game, lvl) => {
+      const cc = clearingColors(game);
+      // L-triomino: 3 cells in an L shape — all 4 rotations via 2×2 minus one corner
+      for (let r = 0; r < ROWS - 1; r++) {
+        for (let c = 0; c < COLS - 1; c++) {
+          const corners = [[r, c], [r, c + 1], [r + 1, c], [r + 1, c + 1]];
+          for (let skip = 0; skip < 4; skip++) {
+            tryAddShape(game, lvl, corners.filter((_, i) => i !== skip), cc);
+          }
+        }
+      }
+    },
+  },
+
+  {
+    id: 'square',
+    name: 'Square',
+    maxLevel: 3,
+    describe: (lvl) => [
+      '2×2 squares of clearing color also clear',
+      '2×2 squares of clearing color also clear',
+      'All 2×2 squares clear',
+    ][lvl - 1],
+    onEvent: 'beforeClear',
+    apply: (game, lvl) => {
+      const cc = clearingColors(game);
+      for (let r = 0; r < ROWS - 1; r++) {
+        for (let c = 0; c < COLS - 1; c++) {
+          tryAddShape(game, lvl, [[r, c], [r, c + 1], [r + 1, c], [r + 1, c + 1]], cc);
+        }
+      }
+    },
+  },
+
+  {
+    id: 'diagonal',
+    name: 'Diagonal',
+    maxLevel: 3,
+    describe: (lvl) => [
+      'Diagonal 3-runs of clearing color also clear',
+      'Diagonal 2-runs of clearing color also clear',
+      'All diagonal 2-runs clear',
+    ][lvl - 1],
+    onEvent: 'beforeClear',
+    apply: (game, lvl) => {
+      const cc = clearingColors(game);
+      const minLen = lvl >= 2 ? 2 : 3;
+      for (const [dr, dc] of [[1, 1], [1, -1]]) {
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            const color = game.grid[r][c];
+            if (!color) continue;
+            let len = 1;
+            while (true) {
+              const nr = r + len * dr, nc = c + len * dc;
+              if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS || game.grid[nr][nc] !== color) break;
+              len++;
+            }
+            if (len < minLen) continue;
+            const shape = Array.from({ length: len }, (_, i) => [r + i * dr, c + i * dc]);
+            tryAddShape(game, lvl, shape, cc);
+          }
+        }
+      }
+    },
+  },
+
+  {
+    id: 'equalSign',
+    name: 'Equal Sign',
+    maxLevel: 3,
+    describe: (lvl) => [
+      'Parallel lines of 2+ clearing color also clear',
+      'Parallel lines of 2+ clearing color also clear',
+      'All parallel lines of 2+ clear',
+    ][lvl - 1],
+    onEvent: 'beforeClear',
+    apply: (game, lvl) => {
+      const cc = clearingColors(game);
+      // Horizontal: two parallel rows 1 apart, same columns, same color
+      for (let r = 0; r < ROWS - 1; r++) {
+        for (let c = 0; c < COLS - 1; c++) {
+          const color = game.grid[r][c];
+          if (!color) continue;
+          let len = 1;
+          while (c + len < COLS && game.grid[r][c + len] === color) len++;
+          if (len < 2) continue;
+          if (!Array.from({ length: len }, (_, i) => game.grid[r + 1][c + i]).every(v => v === color)) continue;
+          const shape = [];
+          for (let i = 0; i < len; i++) { shape.push([r, c + i]); shape.push([r + 1, c + i]); }
+          tryAddShape(game, lvl, shape, cc);
+        }
+      }
+      // Vertical: two parallel columns 1 apart, same rows, same color
+      for (let c = 0; c < COLS - 1; c++) {
+        for (let r = 0; r < ROWS - 1; r++) {
+          const color = game.grid[r][c];
+          if (!color) continue;
+          let len = 1;
+          while (r + len < ROWS && game.grid[r + len][c] === color) len++;
+          if (len < 2) continue;
+          if (!Array.from({ length: len }, (_, i) => game.grid[r + i][c + 1]).every(v => v === color)) continue;
+          const shape = [];
+          for (let i = 0; i < len; i++) { shape.push([r + i, c]); shape.push([r + i, c + 1]); }
+          tryAddShape(game, lvl, shape, cc);
+        }
+      }
+    },
+  },
+
+  {
+    id: 'zShape',
+    name: 'Z-Shape',
+    maxLevel: 3,
+    describe: (lvl) => [
+      'Z/S-tetrominoes of clearing color also clear',
+      'Z/S-tetrominoes of clearing color also clear',
+      'All Z/S-tetrominoes clear',
+    ][lvl - 1],
+    onEvent: 'beforeClear',
+    apply: (game, lvl) => {
+      const cc = clearingColors(game);
+      // Z-tetromino: two 2-cell rows offset by 1 col. All 4 variants (Z, S, vertical Z, vertical S).
+      const templates = [
+        [[0, 0], [0, 1], [1, 1], [1, 2]], // Z horizontal
+        [[0, 1], [0, 2], [1, 0], [1, 1]], // S horizontal
+        [[0, 1], [1, 0], [1, 1], [2, 0]], // Z vertical
+        [[0, 0], [1, 0], [1, 1], [2, 1]], // S vertical
+      ];
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          for (const tmpl of templates) {
+            const shape = tmpl.map(([dr, dc]) => [r + dr, c + dc]);
+            if (shape.some(([sr, sc]) => sr >= ROWS || sc >= COLS || sc < 0)) continue;
+            tryAddShape(game, lvl, shape, cc);
+          }
         }
       }
     },

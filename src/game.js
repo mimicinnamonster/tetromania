@@ -52,7 +52,11 @@ class Game {
 
     this.abilities = new AbilityManager(this);
 
-    if (typeof DEBUG !== 'undefined' && DEBUG) this.abilities.pick('magnetism');
+    if (typeof DEBUG !== 'undefined' && DEBUG) {
+      this.abilities.pick('square');
+      this.abilities.pick('square');
+      this.abilities.pick('square'); // level 3: any color
+    }
 
     for (let i = 0; i < Math.floor(ROWS / 2); i++) {
       this._addInitialRow();
@@ -128,7 +132,9 @@ class Game {
         }
       }
       if (anyLanded) {
+        const justLanded = this.fallingBlocks.filter(b => b.landed);
         this.fallingBlocks = this.fallingBlocks.filter(b => !b.landed);
+        this.abilities.emit('blockLanded', justLanded);
         if (this.fallingBlocks.length === 0) this._checkMatches(this._fallChain);
       }
       return;
@@ -195,14 +201,13 @@ class Game {
 
   _checkMatches(chainCount) {
     const matches = findMatches(this.grid);
-    if (matches.size > 0) {
-      this.clearing   = matches;
+    this.clearing = matches;
+    // Always emit beforeClear so shape abilities can trigger independently
+    this.abilities.emit('beforeClear');
+    if (this.clearing.size > 0) {
       this.clearTimer = CLEAR_DURATION;
       this.chainCount = chainCount;
       this.state      = 'clearing';
-
-      // Echo: let adjacent blocks join the clearing set
-      this.abilities.emit('beforeClear');
 
       // Notify chain-triggered abilities
       if (chainCount > 0) this.abilities.emit('chainFired', chainCount);
