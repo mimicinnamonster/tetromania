@@ -456,7 +456,7 @@ body {
   }
   .wta-topbar-btn:active { background: #3a2a60; }
 
-  /* ── Grid fills remaining height ── */
+  /* ── Grid wrap ── */
   #wta-grid-wrap {
     flex: 1 1 0;
     min-height: 0;
@@ -464,18 +464,31 @@ body {
     box-shadow: none;
     overflow: hidden;
     width: 100%;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    /*
+     * --cell: smaller of width-based and height-based square cell size.
+     * Width:  6 cols + 5 inner gaps (3px each) + 2 padding (3px each) = 21px overhead
+     * Height: 12 rows + 11 inner gaps + 2 padding = 39px overhead
+     *         topbar ≈ 52px
+     */
+    --cell: min(
+      calc((100vw - 21px) / 6),
+      calc((100dvh - 52px - 39px) / 12)
+    );
   }
 
   #wta-grid {
-    width: 100%;
-    height: auto; /* height driven by square cells, not the container */
+    width:  calc(var(--cell) * 6 + 21px);
+    height: calc(var(--cell) * 12 + 39px);
+    flex-shrink: 0;
   }
 
-  /* Square cells: width from 4-col grid, height matches width */
+  /* Square cells with explicit size */
   .wta-cell {
-    width: auto;
-    height: auto;
-    aspect-ratio: 1;
+    width:  var(--cell);
+    height: var(--cell);
     border-radius: 15%;
   }
 
@@ -563,7 +576,7 @@ body {
 
 </div>
 <script>
-const _GAME_COLS = window.matchMedia('(pointer: coarse)').matches ? 4 : 6;
+const _GAME_COLS = 6; // same on mobile and desktop; mobile uses smaller cells
 </script>
 <script>
 {{SCRIPT}}
