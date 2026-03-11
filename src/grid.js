@@ -1,5 +1,5 @@
 const ROWS = 12;
-const COLS = 6;
+const COLS = typeof _GAME_COLS !== 'undefined' && _GAME_COLS ? _GAME_COLS : 6;
 const NUM_COLORS = 6;
 
 function createGrid() {

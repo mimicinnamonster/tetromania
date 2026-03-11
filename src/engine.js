@@ -52,6 +52,17 @@ class Engine {
   _handleInput(event) {
     if (event === 'quit')    { this.stop(); return; }
     if (event === 'restart') { this._newGame(); return; }
+    if (event.startsWith('moveto:')) {
+      const [r, c] = event.slice(7).split(',').map(Number);
+      if (isFinite(r) && isFinite(c)) {
+        const g = this._game;
+        if (g.state === 'playing' || g.state === 'falling' || g.state === 'clearing') {
+          g.cursorRow = Math.max(0, Math.min(ROWS - 1, r));
+          g.cursorCol = Math.max(0, Math.min(COLS - 2, c));
+        }
+      }
+      return;
+    }
     INPUT_HANDLERS[event]?.(this._game);
   }
 }

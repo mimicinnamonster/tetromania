@@ -40,12 +40,71 @@ class WebInput {
     document.addEventListener('keydown', this._boundDown);
     document.addEventListener('keyup',   this._boundUp);
     this._scheduleRepeat();
+    this._setupTouch();
   }
 
   stop() {
     document.removeEventListener('keydown', this._boundDown);
     document.removeEventListener('keyup',   this._boundUp);
     cancelAnimationFrame(this._rafId);
+  }
+
+  _setupTouch() {
+    // Grid tap → move cursor to tapped cell
+    const gridEl = document.getElementById('wta-grid');
+    if (gridEl) {
+      gridEl.addEventListener('touchend', e => {
+        e.preventDefault();
+        const t = e.changedTouches[0];
+        const rect = gridEl.getBoundingClientRect();
+        const x = t.clientX - rect.left;
+        const y = t.clientY - rect.top;
+        const col = Math.floor((x / rect.width)  * COLS);
+        const row = Math.floor((y / rect.height) * ROWS);
+        const clampedCol = Math.max(0, Math.min(COLS - 2, col));
+        const clampedRow = Math.max(0, Math.min(ROWS - 1, row));
+        this._onInput(`moveto:${clampedRow},${clampedCol}`);
+      }, { passive: false });
+    }
+
+    // Touch control buttons
+    const btnMap = {
+      'wta-btn-left':    'left',
+      'wta-btn-right':   'right',
+      'wta-btn-up':      'up',
+      'wta-btn-down':    'down',
+      'wta-btn-swap':    'swap',
+      'wta-btn-raise':   'raise',
+      'wta-btn-pause':   'pause',
+      'wta-btn-restart': 'restart',
+    };
+    for (const [id, event] of Object.entries(btnMap)) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      const repeatable = ['left', 'right', 'up', 'down', 'raise'].includes(event);
+      let repeatId = null;
+      el.addEventListener('touchstart', e => {
+        e.preventDefault();
+        this._onInput(event);
+        if (repeatable) {
+          clearInterval(repeatId);
+          repeatId = setInterval(() => this._onInput(event), REPEAT_RATE);
+        }
+      }, { passive: false });
+      if (repeatable) {
+        el.addEventListener('touchend',    () => { clearInterval(repeatId); repeatId = null; });
+        el.addEventListener('touchcancel', () => { clearInterval(repeatId); repeatId = null; });
+      }
+    }
+
+    // Ability pick card taps in overlay
+    document.getElementById('wta-overlay')?.addEventListener('touchend', e => {
+      const card = e.target.closest('.wta-pick');
+      if (card) {
+        e.preventDefault();
+        card.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      }
+    }, { passive: false });
   }
 
   _fire(key) {

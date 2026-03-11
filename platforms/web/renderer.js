@@ -17,6 +17,7 @@ class WebRenderer {
   _build() {
     const gridEl = document.getElementById('wta-grid');
     gridEl.innerHTML = '';
+    gridEl.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
     this._cells   = [];
     this._animCls = [];
     for (let r = 0; r < ROWS; r++) {
@@ -68,13 +69,23 @@ class WebRenderer {
     const wrap       = document.getElementById('wta-grid-wrap');
     const cursorEl   = document.getElementById('wta-cursor');
     const overlayEl  = document.getElementById('wta-overlay');
+    // Desktop elements
     const scoreEl    = document.getElementById('wta-score');
     const levelEl    = document.getElementById('wta-level');
     const levelSubEl = document.getElementById('wta-level-sub');
-    const pendingEl  = document.getElementById('wta-pending');
+    const pendingEl  = document.getElementById('wta-pending-d');
     const comboEl    = document.getElementById('wta-combo');
-    const comboBarEl = document.getElementById('wta-combo-bar');
+    const comboBarEl = document.getElementById('wta-combo-bar-d');
     const abilEl     = document.getElementById('wta-abilities');
+    // Mobile elements
+    const scoreMEl   = document.getElementById('wta-score-m');
+    const levelMEl   = document.getElementById('wta-level-m');
+    const pendingMEl = document.getElementById('wta-pending');
+    const comboMEl   = document.getElementById('wta-combo-m');
+    const comboBarEl2= document.getElementById('wta-combo-bar');
+    const abilMEl    = document.getElementById('wta-abilities-m');
+
+    const setText = (els, val) => { for (const el of els) if (el) el.textContent = val; };
 
     const layout = this._getLayout(gridEl);
 
@@ -202,10 +213,11 @@ class WebRenderer {
       const gridRect = gridEl.getBoundingClientRect();
       const b0 = c0.getBoundingClientRect();
       const b1 = c1.getBoundingClientRect();
-      cursorEl.style.left   = (b0.left - gridRect.left) + 'px';
-      cursorEl.style.top    = (b0.top  - gridRect.top)  + 'px';
-      cursorEl.style.width  = (b1.right - b0.left) + 'px';
-      cursorEl.style.height = b0.height + 'px';
+      cursorEl.style.left         = (b0.left - gridRect.left) + 'px';
+      cursorEl.style.top          = (b0.top  - gridRect.top)  + 'px';
+      cursorEl.style.width        = (b1.right - b0.left) + 'px';
+      cursorEl.style.height       = b0.height + 'px';
+      cursorEl.style.borderRadius = (b0.height * 0.2) + 'px';
       cursorEl.classList.remove('hidden');
     } else {
       cursorEl.classList.add('hidden');
@@ -222,32 +234,50 @@ class WebRenderer {
     }
 
     // Score / level
-    scoreEl.textContent = game.score;
-    pendingEl.textContent = game.pendingScore > 0 ? `+${game.pendingScore}` : '';
-    levelEl.textContent = game.level;
+    setText([scoreEl, scoreMEl], game.score);
+    const pendingTxt = game.pendingScore > 0 ? `+${game.pendingScore}` : '';
+    setText([pendingEl, pendingMEl], pendingTxt);
+    setText([levelEl, levelMEl], game.level);
     const nextLevelScore = Math.round(500 * Math.pow(2, game.level - 1));
-    levelSubEl.textContent = `next level: ${nextLevelScore}`;
+    if (levelSubEl) levelSubEl.textContent = `next level: ${nextLevelScore}`;
 
     // Combo bar
     if (game.comboStop > 0) {
-      comboEl.textContent = `\u00d7${game.comboCount}`;
+      const comboTxt = `\u00d7${game.comboCount}`;
+      setText([comboEl, comboMEl], comboTxt);
       const pct = Math.min(100, (game.comboStop / game.freezeCap) * 100);
-      comboBarEl.style.width = pct + '%';
-      comboBarEl.style.background = game.comboCount >= 4 ? '#f84' : '#5af';
+      const barColor = game.comboCount >= 4 ? '#f84' : '#5af';
+      for (const bar of [comboBarEl, comboBarEl2]) {
+        if (!bar) continue;
+        bar.style.width = pct + '%';
+        bar.style.background = barColor;
+      }
     } else {
-      comboEl.textContent = '\u2014';
-      comboBarEl.style.width = '0%';
+      setText([comboEl, comboMEl], '\u2014');
+      for (const bar of [comboBarEl, comboBarEl2]) if (bar) bar.style.width = '0%';
     }
 
     // Abilities
     const entries = [...game.abilities.levels.entries()];
-    if (entries.length === 0) {
-      abilEl.innerHTML = '<span class="wta-dim">none yet</span>';
-    } else {
-      abilEl.innerHTML = entries.map(([id, lvl]) => {
-        const ab = ABILITIES.find(a => a.id === id);
-        return `<div class="wta-chip"><span>${ab.name}</span><span class="wta-alevel">Lv${lvl}</span></div>`;
-      }).join('');
+    if (abilEl) {
+      if (entries.length === 0) {
+        abilEl.innerHTML = '<span class="wta-dim">none yet</span>';
+      } else {
+        abilEl.innerHTML = entries.map(([id, lvl]) => {
+          const ab = ABILITIES.find(a => a.id === id);
+          return `<div class="wta-chip"><span>${ab.name}</span><span class="wta-alevel">Lv${lvl}</span></div>`;
+        }).join('');
+      }
+    }
+    if (abilMEl) {
+      if (entries.length === 0) {
+        abilMEl.innerHTML = '<span class="wta-dim">—</span>';
+      } else {
+        abilMEl.innerHTML = entries.map(([id, lvl]) => {
+          const ab = ABILITIES.find(a => a.id === id);
+          return `<span class="wta-chip-sm">${ab.name} <b style="color:#f0c040">${lvl}</b></span>`;
+        }).join('');
+      }
     }
 
     // Overlay — only rebuild DOM when state changes to avoid destroying elements mid-click

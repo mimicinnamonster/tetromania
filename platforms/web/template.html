@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Tetromania</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -17,6 +17,7 @@ body {
   height: 100vh;
   overflow: hidden;
   user-select: none;
+  touch-action: none;
 }
 
 #wta-app {
@@ -35,7 +36,7 @@ body {
 
 #wta-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  /* gridTemplateColumns set by renderer._build() */
   gap: 3px;
   padding: 3px;
   background: #0e0b18;
@@ -176,7 +177,7 @@ body {
   margin-top: 1px;
 }
 
-#wta-combo-bar-wrap {
+.wta-combo-bar-wrap, #wta-combo-bar-wrap {
   height: 5px;
   background: #16112a;
   border-radius: 99px;
@@ -184,7 +185,7 @@ body {
   overflow: hidden;
 }
 
-#wta-combo-bar {
+.wta-combo-bar-inner, #wta-combo-bar {
   height: 100%;
   background: linear-gradient(90deg, #5af, #a0f);
   border-radius: 99px;
@@ -322,20 +323,246 @@ body {
   color: #7a6fa0;
   line-height: 1.4;
 }
+
+/* ── Mobile touch controls (hidden on desktop) ── */
+#wta-topbar { display: none; }
+#wta-touch-controls { display: none; }
+
+/* ── Mobile layout ── */
+@media (max-width: 600px), (pointer: coarse) and (max-width: 900px) {
+  body {
+    align-items: flex-start;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  #wta-app {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    width: 100%;
+    height: 100dvh;
+    padding: 0;
+  }
+
+  /* Hide desktop sidebar */
+  #wta-sidebar { display: none; }
+
+  /* Top stats bar */
+  #wta-topbar {
+    display: flex;
+    flex-shrink: 0;
+    gap: 6px;
+    padding: 6px 8px 4px;
+    background: #1a1428;
+    align-items: center;
+  }
+
+  .wta-stat-block {
+    background: #241e38;
+    border-radius: 10px;
+    padding: 5px 10px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .wta-stat-block h3 {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #7a6fa0;
+    margin-bottom: 1px;
+  }
+
+  .wta-stat-block .wta-val {
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+    white-space: nowrap;
+  }
+
+  #wta-topbar #wta-pending {
+    font-size: 11px;
+    font-weight: 700;
+    color: #f0c040;
+    min-height: 0;
+    margin-top: 0;
+    display: inline;
+  }
+
+  #wta-topbar #wta-combo-bar-wrap {
+    height: 3px;
+    background: #16112a;
+    border-radius: 99px;
+    margin-top: 4px;
+    overflow: hidden;
+  }
+
+  #wta-topbar #wta-combo-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #5af, #a0f);
+    border-radius: 99px;
+    width: 0%;
+    transition: width 0.1s linear;
+  }
+
+  /* Abilities as horizontal chips in topbar */
+  #wta-topbar-abilities {
+    flex: 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .wta-chip-sm {
+    font-size: 10px;
+    padding: 2px 6px;
+    background: #16112a;
+    border-radius: 6px;
+    color: #ccc;
+    white-space: nowrap;
+  }
+
+  /* Grid fills remaining space */
+  #wta-grid-wrap {
+    flex: 1 1 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  #wta-grid {
+    /* Cell size based on available space: min of width-based and height-based */
+    --cell: min(
+      calc((100vw - 20px) / 4),
+      calc((100dvh - 68px - 150px - 11px * 3) / 12)
+    );
+    gap: 3px;
+    padding: 3px;
+  }
+
+  .wta-cell {
+    width: var(--cell);
+    height: var(--cell);
+  }
+
+  /* Touch controls at the bottom */
+  #wta-touch-controls {
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px 12px 10px;
+    background: #1a1428;
+    align-items: center;
+  }
+
+  #wta-dpad-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  #wta-action-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .wta-btn {
+    background: #241e38;
+    border: none;
+    border-radius: 12px;
+    color: #eee;
+    font-size: 18px;
+    font-weight: 700;
+    width: 52px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+    user-select: none;
+    box-shadow: 0 3px 0 #14102a;
+  }
+
+  .wta-btn:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 #14102a;
+  }
+
+  .wta-btn-swap {
+    background: #3a2a60;
+    width: 72px;
+    font-size: 14px;
+    letter-spacing: 0.5px;
+  }
+
+  .wta-btn-raise {
+    background: #1e3020;
+    font-size: 14px;
+  }
+
+  .wta-btn-sm {
+    width: 40px;
+    height: 40px;
+    font-size: 14px;
+    border-radius: 9px;
+  }
+
+  /* Overlay wider on mobile for pick cards */
+  .wta-pick {
+    width: calc(100vw - 48px);
+    max-width: 320px;
+  }
+}
 </style>
 </head>
 <body>
 <div id="wta-app">
+
+  <!-- Mobile top stats bar (hidden on desktop) -->
+  <div id="wta-topbar">
+    <div class="wta-stat-block">
+      <h3>Score</h3>
+      <div class="wta-val" id="wta-score-m">0</div>
+      <div id="wta-pending"></div>
+    </div>
+    <div class="wta-stat-block">
+      <h3>Level</h3>
+      <div class="wta-val" id="wta-level-m">1</div>
+    </div>
+    <div class="wta-stat-block">
+      <h3>Combo</h3>
+      <div class="wta-val" id="wta-combo-m">&mdash;</div>
+      <div id="wta-combo-bar-wrap"><div id="wta-combo-bar"></div></div>
+    </div>
+    <div id="wta-topbar-abilities"><span class="wta-dim" id="wta-abilities-m">—</span></div>
+  </div>
+
+  <!-- Grid -->
   <div id="wta-grid-wrap">
     <div id="wta-grid"></div>
     <div id="wta-cursor" class="hidden"></div>
     <div id="wta-overlay" class="hidden"></div>
   </div>
+
+  <!-- Desktop sidebar -->
   <div id="wta-sidebar">
     <div class="wta-panel">
       <h3>Score</h3>
       <div class="wta-val" id="wta-score">0</div>
-      <div id="wta-pending"></div>
+      <div id="wta-pending-d" style="font-size:14px;font-weight:700;color:#f0c040;min-height:1.2em;margin-top:1px"></div>
     </div>
     <div class="wta-panel">
       <h3>Level</h3>
@@ -345,7 +572,7 @@ body {
     <div class="wta-panel">
       <h3>Combo</h3>
       <div class="wta-val" id="wta-combo">&mdash;</div>
-      <div id="wta-combo-bar-wrap"><div id="wta-combo-bar"></div></div>
+      <div class="wta-combo-bar-wrap" id="wta-combo-bar-wrap-d"><div class="wta-combo-bar-inner" id="wta-combo-bar-d"></div></div>
     </div>
     <div class="wta-panel">
       <h3>Abilities</h3>
@@ -359,7 +586,29 @@ body {
       <b>R</b> restart
     </div>
   </div>
+
+  <!-- Mobile touch controls (hidden on desktop) -->
+  <div id="wta-touch-controls">
+    <div id="wta-dpad-row">
+      <button class="wta-btn" id="wta-btn-left">&#8592;</button>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <button class="wta-btn" id="wta-btn-up">&#8593;</button>
+        <button class="wta-btn" id="wta-btn-down">&#8595;</button>
+      </div>
+      <button class="wta-btn" id="wta-btn-right">&#8594;</button>
+      <button class="wta-btn wta-btn-swap" id="wta-btn-swap">SWAP</button>
+      <button class="wta-btn wta-btn-raise" id="wta-btn-raise">&#9650;</button>
+    </div>
+    <div id="wta-action-row">
+      <button class="wta-btn wta-btn-sm" id="wta-btn-pause">&#9646;&#9646;</button>
+      <button class="wta-btn wta-btn-sm" id="wta-btn-restart">&#8635;</button>
+    </div>
+  </div>
+
 </div>
+<script>
+const _GAME_COLS = (window.innerWidth < 600 || (window.matchMedia('(pointer: coarse)').matches && window.innerWidth < 900)) ? 4 : 6;
+</script>
 <script>
 {{SCRIPT}}
 new Engine(new WebPlatform()).start();
