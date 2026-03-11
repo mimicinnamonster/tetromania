@@ -6,7 +6,7 @@ const path = require('path');
 
 const BUILDS = {
   tty: {
-    out: 'dist/terminal.js',
+    out: 'dist/tetromania.js',
     files: [
       'src/grid.js',
       'src/abilities.js',

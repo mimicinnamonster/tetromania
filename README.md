@@ -48,7 +48,7 @@ Every 500 points earned unlocks an ability pick. Each ability has 3 levels and c
 
 ```bash
 node build.js web    # → dist/web.html  (single-file browser build)
-node build.js tty    # → dist/terminal.js  (TTY bundle)
+node build.js tty    # → dist/tetromania.js  (TTY bundle)
 ```
 
 No dependencies — pure Node.js built-ins only.
