@@ -2,7 +2,7 @@
 
 A Panel de Pon / Tetris Attack clone playable in the terminal or browser. Match colored blocks by swapping adjacent pairs, chain reactions for big scores, and unlock abilities as you level up.
 
-**[Play in browser](https://pyzozord.github.io/tetromania/)**
+**[Play in browser](https://mimicinnamonster.github.io/tetromania/)**
 
 <img src="screenshot.png" width="320" alt="Tetromania screenshot">
 
@@ -12,9 +12,11 @@ A Panel de Pon / Tetris Attack clone playable in the terminal or browser. Match 
 node index.js        # terminal (TTY)
 ```
 
-Or open the [web version](https://pyzozord.github.io/tetromania/) directly — no install needed.
+Or open the [web version](https://mimicinnamonster.github.io/tetromania/) directly — no install needed. Works on mobile too (touch controls, 4-column grid).
 
 ## Controls
+
+**Keyboard:**
 
 | Key | Action |
 |-----|--------|
@@ -25,6 +27,8 @@ Or open the [web version](https://pyzozord.github.io/tetromania/) directly — n
 | `R` | Restart |
 | `1` / `2` / `3` | Pick ability |
 | `Q` / `Esc` | Quit |
+
+**Mobile (touch):** Tap a cell to move the cursor there. Use the on-screen D-pad, Swap, and Raise buttons.
 
 ## How to Play
 
