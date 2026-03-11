@@ -1,18 +1,16 @@
-const { ROWS, COLS, createGrid, generateRow, findMatches, applyGravity } = require('./grid');
+const { ROWS, COLS, MIN_MATCH, createGrid, generateRow, findMatches, applyGravity } = require('./grid');
 const { AbilityManager } = require('./abilityManager');
 
 const CLEAR_DURATION   = 500;
 const BASE_RISE_MS     = 4000;
 const MIN_RISE_MS      = 500;
 const FALL_SPEED       = 18;
-const COMBO_STOP_BASE  = 1500;
-const COMBO_STOP_CHAIN = 800;
-
-// Level is derived from score: level 1 = 0–499, level 2 = 500–999, level 3 = 1000–1999, ...
-// Each level threshold doubles: 500 × 2^(n-2) for n ≥ 2
-function scoreToLevel(score) {
-  return score < 500 ? 1 : 2 + Math.floor(Math.log2(score / 500));
-}
+const COMBO_STOP_BASE    = 9000; // ms window for first clear (easy to reach x2)
+const COMBO_STOP_DECAY   = 0.60; // each subsequent combo window shrinks more steeply
+const COMBO_STOP_MIN     = 750;  // floor
+const COMBO_STOP_CHAIN   = 2400;  // bonus ms per chain level
+const POINTS_PER_BLOCK = 10;  // chips earned per cleared block
+const SCORE_PER_LEVEL  = MIN_MATCH * POINTS_PER_BLOCK; // score for a basic clear = one level threshold
 
 class Game {
   constructor() {
@@ -39,13 +37,14 @@ class Game {
     this.overclockMult  = 1;
     this.overclockTimer = 0;
 
-    this.score        = 0;
-    this.pendingScore = 0; // accumulates during a chain, flushed to score when chain ends
+    this.score = 0;
+    this.chips = 0; // accumulated block points this chain session
+    this.mult  = 1; // accumulated multiplier this chain session
     this.level = 1;
     this.time  = 0;
 
     this.pickOptions  = []; // array of ability objects shown during 'picking'
-    this._pendingPick = false; // level-up reached mid-chain; show pick after chain ends
+    this._resumeState = 'playing'; // state to restore after picking
 
     // 'playing' | 'falling' | 'clearing' | 'paused' | 'picking' | 'gameOver'
     this.state = 'playing';
@@ -61,6 +60,11 @@ class Game {
     for (let i = 0; i < Math.floor(ROWS / 2); i++) {
       this._addInitialRow();
     }
+    this.grid[ROWS] = generateRow(this.grid);
+  }
+
+  get riseOffset() {
+    return Math.min(1, this.riseTimer / this.riseInterval);
   }
 
   get riseInterval() {
@@ -87,10 +91,7 @@ class Game {
     if (this.comboStop > 0) {
       this.comboStop -= dt;
       if (this.comboStop <= 0) {
-        this.comboStop  = 0;
-        this.comboCount = 0;
-        this.comboLevel = 0;
-        this.abilities.emit('comboEnded');
+        this._endCombo();
       }
     }
 
@@ -150,6 +151,15 @@ class Game {
     if (this.state === 'gameOver' || this.state === 'paused' || this.state === 'picking') return false;
 
     const r = this.cursorRow, c = this.cursorCol;
+
+    // Swap in the preview (incoming) row
+    if (r === ROWS) {
+      const tmp = this.grid[ROWS][c];
+      this.grid[ROWS][c]     = this.grid[ROWS][c + 1];
+      this.grid[ROWS][c + 1] = tmp;
+      return true;
+    }
+
     if (this.clearing.has(`${r},${c}`) || this.clearing.has(`${r},${c + 1}`)) return false;
 
     const colorA = this.grid[r][c], colorB = this.grid[r][c + 1];
@@ -174,13 +184,9 @@ class Game {
     const ability = this.pickOptions[choice];
     if (ability) this.abilities.pick(ability.id);
     this.pickOptions = [];
-    this._checkLevelUp();
-    if (this._pendingPick) {
-      this._pendingPick = false;
-      // stay in 'picking' with the new options
-    } else {
-      this.state = 'playing';
-    }
+    this.state = this._resumeState;
+    this._resumeState = 'playing';
+    this._checkLevelUp(); // may immediately re-enter 'picking' if another threshold crossed
   }
 
   togglePause() {
@@ -191,7 +197,7 @@ class Game {
   moveLeft()  { if (this.cursorCol > 0)        this.cursorCol--; }
   moveRight() { if (this.cursorCol < COLS - 2)  this.cursorCol++; }
   moveUp()    { if (this.cursorRow > 0)         this.cursorRow--; }
-  moveDown()  { if (this.cursorRow < ROWS - 1)  this.cursorRow++; }
+  moveDown()  { if (this.cursorRow < ROWS)       this.cursorRow++; }
 
   raise() {
     if (this.state === 'gameOver' || this.state === 'paused' || this.state === 'picking') return;
@@ -216,24 +222,19 @@ class Game {
 
       // Combo session counter (manual + chains both count)
       this.comboCount++;
-      this.comboLevel = this.comboCount;
+      // Level N requires N clears to advance: thresholds at 1, 3, 6, 10, 15...
+      this.comboLevel = Math.floor((1 + Math.sqrt(1 + 8 * (this.comboCount - 1))) / 2);
 
-      const chainMult = Math.pow(2, chainCount);
-      const comboMult = this.comboCount;
-      this.pendingScore += Math.floor(this.clearing.size * 10 * chainMult * comboMult * this.level * this.overclockMult);
+      this.chips += this.clearing.size * POINTS_PER_BLOCK * (1 + chainCount);
+      this.mult  += (this.comboCount - 1);
+      this._checkLevelUp();
 
-      const freeze = (COMBO_STOP_BASE * this.comboCount + chainCount * COMBO_STOP_CHAIN) * this.level;
+      const freeze = Math.max(COMBO_STOP_MIN, COMBO_STOP_BASE * Math.pow(COMBO_STOP_DECAY, this.comboCount - 1)) + chainCount * COMBO_STOP_CHAIN;
       this.comboStop = Math.min(this.freezeCap, Math.max(this.comboStop, freeze));
     } else {
-      // Chain complete — flush pending points into score
-      this.score       += this.pendingScore;
-      this.pendingScore = 0;
-      this.chainCount   = 0;
-      this._checkLevelUp(); // sets _pendingPick if level increased
-      if (this._pendingPick) {
-        this._pendingPick = false;
-        this.state = 'picking';
-      } else if (this._pendingGravity) {
+      // Chain complete — score settles when comboStop expires, not here
+      this.chainCount = 0;
+      if (this._pendingGravity) {
         this._pendingGravity = false;
         this._startGravity(0);
       } else {
@@ -255,13 +256,14 @@ class Game {
   _startGravity(chainAfter) {
     this._fallChain = chainAfter;
     const newFalling = [];
+    const H = this.grid.length;
     for (let c = 0; c < COLS; c++) {
       const blocks = [];
-      for (let r = 0; r < ROWS; r++)
+      for (let r = 0; r < H; r++)
         if (this.grid[r][c]) blocks.push({ color: this.grid[r][c], fromRow: r });
-      for (let r = 0; r < ROWS; r++) this.grid[r][c] = 0;
+      for (let r = 0; r < H; r++) this.grid[r][c] = 0;
       blocks.forEach((b, i) => {
-        const targetRow = ROWS - blocks.length + i;
+        const targetRow = H - blocks.length + i;
         if (targetRow !== b.fromRow) newFalling.push({ color: b.color, col: c, row: b.fromRow, targetRow });
         else this.grid[b.fromRow][c] = b.color;
       });
@@ -273,11 +275,12 @@ class Game {
   _rise() {
     if (this.grid[0].some(v => v !== 0)) { this.state = 'gameOver'; return; }
     for (let r = 0; r < ROWS - 1; r++) this.grid[r] = [...this.grid[r + 1]];
-    this.grid[ROWS - 1] = generateRow(this.grid);
+    this.grid[ROWS - 1] = [...this.grid[ROWS]];
     if (this.cursorRow > 0) this.cursorRow--;
     for (const b of this.fallingBlocks) { b.row--; b.targetRow--; }
     this.fallingBlocks = this.fallingBlocks.filter(b => b.targetRow >= 0);
     this.abilities.emit('rowAdded');
+    this.grid[ROWS] = generateRow(this.grid);
   }
 
   _addInitialRow() {
@@ -286,17 +289,32 @@ class Game {
     this.grid[ROWS - 1] = generateRow(this.grid);
   }
 
+  _endCombo() {
+    this.comboStop  = 0;
+    const finalComboCount = this.comboCount;
+    this.comboCount = 0;
+    this.comboLevel = 0;
+    this.score += Math.floor(this.chips * this.mult * this.overclockMult);
+    this.chips  = 0;
+    this.mult   = 1;
+    this._checkLevelUp();
+    this.abilities.emit('comboEnded', finalComboCount);
+  }
+
   _checkLevelUp() {
-    const newLevel = scoreToLevel(this.score);
-    if (newLevel > this.level) {
-      this.level = newLevel;
+    const effectiveScore = this.score + Math.floor(this.chips * this.mult * this.overclockMult);
+    if (effectiveScore >= SCORE_PER_LEVEL * Math.pow(this.level, 3)) {
+      this.level++;
       const options = this.abilities.getOptions(3);
       if (options.length > 0) {
         this.pickOptions  = options;
-        this._pendingPick = true;
+        this._resumeState = this.state;
+        this.state        = 'picking';
       }
     }
   }
+
+  get nextLevelScore() { return SCORE_PER_LEVEL * Math.pow(this.level, 3); }
 }
 
-module.exports = { Game };
+module.exports = { Game, POINTS_PER_BLOCK };

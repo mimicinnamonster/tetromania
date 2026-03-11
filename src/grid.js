@@ -1,9 +1,10 @@
 const ROWS = 12;
 const COLS = typeof _GAME_COLS !== 'undefined' && _GAME_COLS ? _GAME_COLS : 6;
 const NUM_COLORS = 6;
+const MIN_MATCH = 3;
 
 function createGrid() {
-  return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
+  return Array.from({ length: ROWS + 1 }, () => new Array(COLS).fill(0));
 }
 
 // Generate a new row that won't immediately create a match
@@ -29,23 +30,25 @@ function generateRow(grid) {
 
 // Drop all blocks straight down to fill gaps (column by column)
 function applyGravity(grid) {
+  const H = grid.length;
   for (let c = 0; c < COLS; c++) {
     const blocks = [];
-    for (let r = ROWS - 1; r >= 0; r--) {
+    for (let r = H - 1; r >= 0; r--) {
       if (grid[r][c] !== 0) blocks.push(grid[r][c]);
     }
-    for (let r = ROWS - 1; r >= 0; r--) {
-      grid[r][c] = blocks[ROWS - 1 - r] ?? 0;
+    for (let r = H - 1; r >= 0; r--) {
+      grid[r][c] = blocks[H - 1 - r] ?? 0;
     }
   }
 }
 
 // Return a Set of "r,c" keys for all cells that are part of a match (3+)
 function findMatches(grid) {
+  const H = grid.length;
   const matched = new Set();
 
   // Horizontal
-  for (let r = 0; r < ROWS; r++) {
+  for (let r = 0; r < H; r++) {
     for (let c = 0; c < COLS - 2; c++) {
       const color = grid[r][c];
       if (!color) continue;
@@ -60,12 +63,12 @@ function findMatches(grid) {
 
   // Vertical
   for (let c = 0; c < COLS; c++) {
-    for (let r = 0; r < ROWS - 2; r++) {
+    for (let r = 0; r < H - 2; r++) {
       const color = grid[r][c];
       if (!color) continue;
       if (grid[r + 1][c] === color && grid[r + 2][c] === color) {
         let end = r + 2;
-        while (end + 1 < ROWS && grid[end + 1]?.[c] === color) end++;
+        while (end + 1 < H && grid[end + 1]?.[c] === color) end++;
         for (let i = r; i <= end; i++) matched.add(`${i},${c}`);
         r = end;
       }
@@ -75,4 +78,4 @@ function findMatches(grid) {
   return matched;
 }
 
-module.exports = { ROWS, COLS, NUM_COLORS, createGrid, generateRow, applyGravity, findMatches };
+module.exports = { ROWS, COLS, NUM_COLORS, MIN_MATCH, createGrid, generateRow, applyGravity, findMatches };

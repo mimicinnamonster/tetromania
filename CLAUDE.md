@@ -76,7 +76,7 @@ Interruptions: `'paused'`, `'picking'` (ability select), `'gameOver'`
 - **playing** — normal gameplay; swap triggers a 100ms `_gravityDelay`, then `_startGravity(0)`; swap during falling sets `_pendingGravity` flag to re-run gravity after the chain ends
 - **falling** — animated gravity; `fallingBlocks[]` entries track `{color, col, row, targetRow}`; on all landed calls `_checkMatches(chainCount)`
 - **clearing** — matched cells flash for `CLEAR_DURATION` ms, then `_resolveClearing` zeroes them and starts gravity for chain
-- **picking** — ability select screen; shown only after the full chain resolves (deferred via `_pendingPick` flag); after each pick, milestones are rechecked immediately to handle multiple picks from one chain
+- **picking** — ability select screen; shown immediately when `_checkLevelUp` fires (mid-combo or after flush); `_resumeState` stores prior state (e.g. `'clearing'`) so `pick()` can resume it; after each pick, milestones are rechecked immediately to handle multiple picks from one chain
 - **gameOver** — row 0 has blocks at rise time; R restarts
 
 Rise is blocked during `clearing`, while `fallingBlocks.length > 0`, while `_gravityDelay > 0`, or while `comboStop > 0`.
@@ -90,15 +90,24 @@ Rise is blocked during `clearing`, while `fallingBlocks.length > 0`, while `_gra
 
 ## Scoring
 
+Balatro-style: each chain session accumulates `chips` and `mult` displayed as `chips × mult`.
+
 ```
-pendingScore += clearing.size × 10 × 2^chainCount × comboCount × level × overclockMult
-  (pendingScore flushed into score when chain fully ends — no more matches)
-comboStop = min(freezeCap, max(comboStop, (COMBO_STOP_BASE × comboCount + chainCount × COMBO_STOP_CHAIN) × level))
-riseInterval = max(MIN_RISE_MS, BASE_RISE_MS - (level-1)×350 - floor(score/500)×80) × frenzyMult
+Per clear event:
+  chips += clearing.size × 10 × (1 + chainCount)   // chainCount bonus goes directly into chips
+  mult  += (comboCount - 1)                          // 0 on first clear, 1 on second, etc.
+
+At chain end (comboStop expires → _endCombo):
+  score += floor(chips × mult × overclockMult)
+  chips = 0, mult = 1
+
+comboStop = min(freezeCap, max(comboStop, max(COMBO_STOP_MIN, COMBO_STOP_BASE × COMBO_STOP_DECAY^(comboCount-1)) + chainCount × COMBO_STOP_CHAIN))
+riseInterval = max(MIN_RISE_MS, BASE_RISE_MS - (level-1)×350) × frenzyMult
 ```
 
-- `game.pendingScore` accumulates during clearing/falling; flushed to `game.score` at chain end
-- Milestones are checked after the flush; `_pendingPick` defers the pick screen until then
+- `game.chips` / `game.mult` accumulate during clearing/falling; flushed to `game.score` when `comboStop` expires
+- `_checkLevelUp` fires mid-combo using `effectiveScore = score + floor(chips × mult × overclockMult)`
+- Level-up enters `picking` immediately; `_resumeState` stores the prior state to restore after pick
 - After each pick, milestones are rechecked immediately (handles multiple milestones from one chain)
 
 ## Swap Gravity Delay
@@ -135,17 +144,17 @@ After a swap, `_gravityDelay = 100` ms is set instead of immediately calling `_s
 | `glacial` | Glacial | 3 | rowAdded | +0.3/0.5/0.8s combo freeze per new row |
 | `painter` | Painter | 3 | rowAdded | Injects matching pairs/triplets into new rows |
 | `rainmaker` | Rainmaker | 3 | rowAdded (counter) | Every 5/3/2 rows: replaces top row with one color |
-| `echo` | Echo | 3 | beforeClear | On manual swap: 15/30/50% chance adjacent blocks join a clear |
+| `echo` | Echo | 3 | beforeClear | On manual swap: 15/25/35% chance adjacent blocks join a clear |
 | `transmute` | Transmute | 3 | blockLanded | Landing blocks recolor block below (33/66/100% chance) |
-| `bomb` | Bomb | 3 | beforeClear | On manual swap: blast 2×2/3×3/4×4 area at cursor position |
-| `ripple` | Ripple | 3 | beforeClear | 30/60/100% chance same-color neighbors join a clear |
+| `bomb` | Bomb | 3 | beforeClear | On manual swap: 15/25/35% chance to blast 2×2 area at cursor |
+| `ripple` | Ripple | 3 | beforeClear | 15/25/35% chance same-color neighbors join a clear (cascades) |
 | `lShape` | L-Shape | 3 | beforeClear | L-triominoes (lv1: touching match, lv2: matching color, lv3: any) clear |
 | `square` | Square | 3 | beforeClear | 2×2 same-color squares (lv1: touching, lv2: matching color, lv3: any) clear |
 | `diagonal` | Diagonal | 3 | beforeClear | Diagonal 3-runs (lv1: touching, lv2: matching color, lv3: any) clear |
 | `equalSign` | Equal Sign | 3 | beforeClear | Two parallel H or V lines of 3+ (lv1: touching, lv2: matching color, lv3: any) clear |
 | `zShape` | Z-Shape | 3 | beforeClear | Z/S-tetrominoes all 4 rotations (lv1: touching, lv2: matching color, lv3: any) clear |
 | `magnetism` | Magnetism | 3 | swapMade | Same-color swap: pull matching blocks toward cursor in 2D (±2/±4/all range) |
-| `aftershock` | Aftershock | 3 | chainFired | On x2+ chain: destroys 1/2/3 random blocks |
+| `aftershock` | Aftershock | 3 | comboEnded | On x2+ combo: destroys 1/2/3 random blocks |
 | `overclock` | Overclock | 3 | chainFired | On x3+ chain: score ×2/3/4 for 8s |
 | `panicShield` | Panic Shield | 3 | tick | Stack >80%: auto-removes top row (30/20/10s cd) |
 | `colorblind` | Colorblind | 3 | comboEnded | Unifies 1/2/3 sparsest column(s) to majority color |

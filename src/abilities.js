@@ -107,11 +107,11 @@ const ABILITIES = [
     id: 'echo',
     name: 'Echo',
     maxLevel: 3,
-    describe: (lvl) => `On manual swap: ${[15, 30, 50][lvl - 1]}% chance adjacent blocks join a clear`,
+    describe: (lvl) => `On manual swap: ${[15, 25, 35][lvl - 1]}% chance adjacent blocks join a clear`,
     onEvent: 'beforeClear',
     apply: (game, lvl) => {
       if (!game._swapPending) return;
-      const chance = [0.15, 0.30, 0.50][lvl - 1];
+      const chance = [0.15, 0.25, 0.35][lvl - 1];
       const extra = [];
       for (const key of game.clearing) {
         const [r, c] = key.split(',').map(Number);
@@ -221,14 +221,15 @@ const ABILITIES = [
     id: 'bomb',
     name: 'Bomb',
     maxLevel: 3,
-    describe: (lvl) => `On manual swap: blast ${[2, 3, 4][lvl - 1]}×${[2, 3, 4][lvl - 1]} area at cursor`,
+    describe: (lvl) => `On manual swap: ${[15, 25, 35][lvl - 1]}% chance to blast 2×2 area at cursor`,
     onEvent: 'beforeClear',
     apply: (game, lvl) => {
       if (!game._swapPending) return;
-      const size = lvl + 1; // 2, 3, 4
+      const chance = [0.15, 0.25, 0.35][lvl - 1];
+      if (Math.random() >= chance) return;
       const cr = game.cursorRow, cc = game.cursorCol;
-      for (let dr = 0; dr < size; dr++)
-        for (let dc = 0; dc < size; dc++) {
+      for (let dr = 0; dr < 2; dr++)
+        for (let dc = 0; dc < 2; dc++) {
           const nr = cr + dr, nc = cc + dc;
           if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && game.grid[nr][nc])
             game.clearing.add(`${nr},${nc}`);
@@ -240,23 +241,25 @@ const ABILITIES = [
     id: 'ripple',
     name: 'Ripple',
     maxLevel: 3,
-    describe: (lvl) => `${[30, 60, 100][lvl - 1]}% chance same-color neighbors join a clear`,
+    describe: (lvl) => `${[15, 25, 35][lvl - 1]}% chance same-color neighbors join a clear (cascades)`,
     onEvent: 'beforeClear',
     apply: (game, lvl) => {
-      const chance = [0.30, 0.60, 1.0][lvl - 1];
+      const chance = [0.15, 0.25, 0.35][lvl - 1];
       const cc = clearingColors(game);
-      const extra = [];
-      for (const key of game.clearing) {
+      const frontier = [...game.clearing];
+      while (frontier.length > 0) {
+        const key = frontier.pop();
         const [r, c] = key.split(',').map(Number);
         for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
           const nr = r + dr, nc = c + dc;
           if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS &&
               game.grid[nr][nc] && cc.has(game.grid[nr][nc]) &&
-              !game.clearing.has(`${nr},${nc}`) && Math.random() < chance)
-            extra.push(`${nr},${nc}`);
+              !game.clearing.has(`${nr},${nc}`) && Math.random() < chance) {
+            game.clearing.add(`${nr},${nc}`);
+            frontier.push(`${nr},${nc}`);
+          }
         }
       }
-      for (const k of extra) game.clearing.add(k);
     },
   },
 
@@ -417,10 +420,10 @@ const ABILITIES = [
     id: 'aftershock',
     name: 'Aftershock',
     maxLevel: 3,
-    describe: (lvl) => `On x2+ chain: destroy ${[1, 2, 3][lvl - 1]} random block${lvl > 1 ? 's' : ''}`,
-    onEvent: 'chainFired',
-    apply: (game, lvl, chainCount) => {
-      if (chainCount < 2) return;
+    describe: (lvl) => `On x2+ combo: destroy ${[1, 2, 3][lvl - 1]} random block${lvl > 1 ? 's' : ''}`,
+    onEvent: 'comboEnded',
+    apply: (game, lvl, comboCount) => {
+      if (comboCount < 2) return;
       const cells = [];
       for (let r = 0; r < ROWS; r++)
         for (let c = 0; c < COLS; c++)

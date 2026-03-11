@@ -133,10 +133,10 @@ class Renderer {
     const flashOn    = Math.floor(now / 120) % 2 === 0;
     const cursorBlink = Math.floor(now / 500) % 2 === 0;
 
-    // Rainbow border during combo freeze
+    // Rainbow border during combo freeze (only x2+)
     let borderColor = '';
-    if (game.comboStop > 0) {
-      const period = Math.max(75, 600 / Math.pow(2, game.comboLevel - 1));
+    if (game.comboStop > 0 && game.comboLevel > 1) {
+      const period = Math.max(75, 600 / Math.pow(2, game.comboLevel - 2));
       borderColor  = RAINBOW[Math.floor(now / period) % RAINBOW.length];
     }
     const B = (s) => borderColor ? `${borderColor}${s}${RST}` : s;
@@ -183,11 +183,14 @@ class Renderer {
     let chainStr = '  -';
     if (game.chainCount > 1) chainStr = `\x1b[93m${BOLD} x${game.chainCount}${RST}`;
 
-    let comboStr = '  -';
+    const comboDisplay = Math.max(1, game.comboLevel);
+    let comboStr;
     if (game.comboStop > 0) {
       const freezeSecs = (game.comboStop / 1000).toFixed(1);
       const idx = (game.comboLevel - 1) % RAINBOW.length;
-      comboStr = `${RAINBOW[idx]}${BOLD}x${game.comboLevel} ${DIM}(${freezeSecs}s)${RST}`;
+      comboStr = `${RAINBOW[idx]}${BOLD}x${comboDisplay} ${DIM}(${freezeSecs}s)${RST}`;
+    } else {
+      comboStr = ` x${comboDisplay}`;
     }
 
     let overclockStr = '';
@@ -206,8 +209,9 @@ class Renderer {
       `${BOLD}Tetris Attack TTY${RST}`,
       '',
       `Score  ${String(game.score).padStart(7)}`,
-      game.pendingScore > 0 ? `\x1b[93m${BOLD}+${String(game.pendingScore).padStart(6)}${RST}` : '',
+      game.chips > 0 ? `\x1b[93m${BOLD}  ${game.chips} \u00d7 ${game.mult}${RST}` : '',
       `Level  ${String(game.level).padStart(7)}`,
+      `${DIM}next   ${String(Math.max(0, game.nextLevelScore - game.score)).padStart(7)}${RST}`,
       `Time   ${mm}:${ss}`,
       `Chain  ${chainStr}`,
       `Combo  ${comboStr}`,

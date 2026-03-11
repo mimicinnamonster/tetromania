@@ -5,6 +5,7 @@
 class WebRenderer {
   constructor() {
     this._cells        = [];
+    this._previewCells = [];   // COLS absolutely-positioned cells inside #wta-grid for the incoming row
     this._built        = false;
     this._overlayState = null;
     this._fallingPool  = [];   // pool of overlay divs for smooth sub-row falling
@@ -12,6 +13,9 @@ class WebRenderer {
     this._prevGrid     = null; // grid snapshot from last frame (for swap/rise detection)
     this._layout       = null; // cached {originTop, originLeft, cellH, cellW, gapH, gapW}
     this._animCls      = [];   // per-cell currently-running animation class string
+    this._displayScore = 0;    // animated score counter
+    this._scoreTo      = 0;    // target score for count-up
+    this._scoreStep    = 1;    // points added per frame
   }
 
   _build() {
@@ -19,6 +23,7 @@ class WebRenderer {
     gridEl.innerHTML = '';
     gridEl.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
     gridEl.style.gridTemplateRows    = '';  // let rows size from cell content (aspect-ratio on mobile)
+    gridEl.style.position            = 'relative'; // contain absolutely-positioned preview cells
     this._cells   = [];
     this._animCls = [];
     for (let r = 0; r < ROWS; r++) {
@@ -30,6 +35,16 @@ class WebRenderer {
         this._animCls.push('');
       }
     }
+    // Preview cells: absolutely positioned inside #wta-grid, one row below content.
+    // They travel with the grid's translateY, sliding into view from below.
+    this._previewCells = [];
+    for (let c = 0; c < COLS; c++) {
+      const div = document.createElement('div');
+      div.className = 'wta-cell';
+      div.style.position = 'absolute';
+      gridEl.appendChild(div);
+      this._previewCells.push(div);
+    }
     this._built  = true;
     this._layout = null;
   }
@@ -37,7 +52,8 @@ class WebRenderer {
   _getLayout(gridEl, wrap) {
     if (this._layout) return this._layout;
     // Origins must be relative to wrap (the positioned ancestor of overlay divs and cursor)
-    const wrapRect = wrap.getBoundingClientRect();
+    const wrapRect  = wrap.getBoundingClientRect();
+    const gridRect  = gridEl.getBoundingClientRect();
     const r0 = this._cells[0].getBoundingClientRect();
     const r1 = this._cells[COLS].getBoundingClientRect();
     const c1 = this._cells[1].getBoundingClientRect();
@@ -49,6 +65,19 @@ class WebRenderer {
       gapH:  r1.top  - r0.bottom,
       gapW:  c1.left - r0.right,
     };
+    // Position preview cells inside gridEl (absolute, in grid's own coordinate space).
+    // r0 relative to grid: cell[0] top/left within gridEl.
+    const rowStep = this._layout.cellH + this._layout.gapH;
+    const colStep = this._layout.cellW + this._layout.gapW;
+    const cellTopInGrid  = r0.top  - gridRect.top;
+    const cellLeftInGrid = r0.left - gridRect.left;
+    for (let c = 0; c < COLS; c++) {
+      const div = this._previewCells[c];
+      div.style.top    = (cellTopInGrid  + ROWS * rowStep) + 'px';
+      div.style.left   = (cellLeftInGrid + c * colStep) + 'px';
+      div.style.width  = this._layout.cellW + 'px';
+      div.style.height = this._layout.cellH + 'px';
+    }
     return this._layout;
   }
 
@@ -69,6 +98,7 @@ class WebRenderer {
 
     const gridEl     = document.getElementById('wta-grid');
     const wrap       = document.getElementById('wta-grid-wrap');
+    const frameEl    = document.getElementById('wta-grid-frame');
     const cursorEl   = document.getElementById('wta-cursor');
     const overlayEl  = document.getElementById('wta-overlay');
     // Desktop elements
@@ -77,19 +107,23 @@ class WebRenderer {
     const levelSubEl = document.getElementById('wta-level-sub');
     const pendingEl  = document.getElementById('wta-pending-d');
     const comboEl    = document.getElementById('wta-combo');
-    const comboBarEl = document.getElementById('wta-combo-bar-d');
-    const abilEl     = document.getElementById('wta-abilities');
+    const comboBarEl  = document.getElementById('wta-combo-bar-d');
+    const comboPanelEl= document.getElementById('wta-combo-panel');
+    const abilEl      = document.getElementById('wta-abilities');
     // Mobile elements
-    const scoreMEl   = document.getElementById('wta-score-m');
-    const levelMEl   = document.getElementById('wta-level-m');
-    const pendingMEl = document.getElementById('wta-pending');
-    const comboMEl   = document.getElementById('wta-combo-m');
-    const comboBarEl2= document.getElementById('wta-combo-bar');
-    const abilMEl    = document.getElementById('wta-abilities-m');
+    const scoreMEl    = document.getElementById('wta-score-m');
+    const levelMEl    = document.getElementById('wta-level-m');
+    const pendingMEl  = document.getElementById('wta-pending');
+    const comboMEl    = document.getElementById('wta-combo-m');
+    const comboBarEl2 = document.getElementById('wta-combo-bar');
+    const comboBlockMEl = document.getElementById('wta-combo-block-m');
+    const abilMEl     = document.getElementById('wta-abilities-m');
 
     const setText = (els, val) => { for (const el of els) if (el) el.textContent = val; };
 
     const layout = this._getLayout(gridEl, wrap);
+    const riseOffset = (typeof game.riseOffset !== 'undefined') ? game.riseOffset : 0;
+    const riseShift  = riseOffset * (layout.cellH + layout.gapH); // px upward shift
 
     // ── Detect grid rise (all rows shifted up by 1) ──────────────────────────
     let risen = false;
@@ -130,13 +164,6 @@ class WebRenderer {
         justLanded.add(`${b.targetRow},${b.col}`);
     }
 
-    // ── New bottom row cells appear on rise ──────────────────────────────────
-    const newBottomCells = new Set();
-    if (risen) {
-      for (let c = 0; c < COLS; c++)
-        if (game.grid[ROWS - 1][c] !== 0) newBottomCells.add(`${ROWS - 1},${c}`);
-    }
-
     // ── Falling block overlay divs (smooth sub-row positioning) ──────────────
     for (const d of this._fallingPool) d._inUse = false;
     const fallingCells = new Set(); // "row,col" keys obscured by an overlay div
@@ -145,7 +172,7 @@ class WebRenderer {
       if (b.row < 0) continue;
       const div  = this._borrowFallingDiv(wrap);
       div.dataset.color = b.color;
-      const top  = layout.originTop  + b.row * (layout.cellH + layout.gapH);
+      const top  = layout.originTop  + b.row * (layout.cellH + layout.gapH) - riseShift;
       const left = layout.originLeft + b.col * (layout.cellW + layout.gapW);
       div.style.cssText = `top:${top}px;left:${left}px;width:${layout.cellW}px;height:${layout.cellH}px;display:block`;
       const roundRow = Math.min(ROWS - 1, Math.round(b.row));
@@ -175,7 +202,6 @@ class WebRenderer {
         if (!isClearing) {
           if (swapAnim[key] && color !== 0)             newAnim = `swap-${swapAnim[key]}`;
           else if (justLanded.has(key) && color !== 0)  newAnim = 'landing';
-          else if (newBottomCells.has(key))             newAnim = 'appearing';
         }
 
         // If the cell is clearing, kill any existing animation to avoid CSS conflict
@@ -206,12 +232,20 @@ class WebRenderer {
       }
     }
 
+    // ── Preview (incoming) row ───────────────────────────────────────────────
+    for (let c = 0; c < COLS; c++) {
+      this._previewCells[c].dataset.color = game.grid[ROWS]?.[c] || '';
+    }
+
+    // ── Rise animation: translate grid up continuously ───────────────────────
+    gridEl.style.transform = riseShift > 0 ? `translateY(-${riseShift.toFixed(2)}px)` : '';
+
     // ── Cursor ───────────────────────────────────────────────────────────────
     const showCursor = game.state !== 'picking' && game.state !== 'gameOver';
     const cr = game.cursorRow, cc = game.cursorCol;
     if (showCursor) {
-      const c0 = this._cells[cr * COLS + cc];
-      const c1 = this._cells[cr * COLS + cc + 1];
+      const c0 = cr === ROWS ? this._previewCells[cc]     : this._cells[cr * COLS + cc];
+      const c1 = cr === ROWS ? this._previewCells[cc + 1] : this._cells[cr * COLS + cc + 1];
       const wrapRect = wrap.getBoundingClientRect();
       const b0 = c0.getBoundingClientRect();
       const b1 = c1.getBoundingClientRect();
@@ -227,26 +261,48 @@ class WebRenderer {
 
     gridEl.classList.toggle('overclock', game.overclockMult > 1);
 
-    if (game.comboStop > 0) {
-      const period = Math.max(75, 600 / Math.pow(2, game.comboLevel - 1));
-      gridEl.style.setProperty('--rainbow-period', (period * 6 / 1000).toFixed(3) + 's');
-      gridEl.classList.add('combo');
+    if (game.comboStop > 0 && game.comboLevel > 1) {
+      const lvl      = game.comboLevel - 1; // 1 at x2, 2 at x3, etc.
+      const periodMs = Math.max(75, 600 / Math.pow(2, lvl - 1)) * 6;
+      const border   = Math.min(10, 3 + (lvl - 1) * 1.5);
+      const glow     = Math.min(80, 24 + (lvl - 1) * 14);
+      const glowText = Math.min(24, 4 + (lvl - 1) * 4);
+      const hue      = Math.round((Date.now() % periodMs) / periodMs * 360);
+      const col      = `hsl(${hue},100%,65%)`;
+      const colA     = `hsla(${hue},100%,65%,0.65)`;
+      const root     = document.documentElement;
+      root.style.setProperty('--combo-color',    col);
+      root.style.setProperty('--combo-color-a',  colA);
+      root.style.setProperty('--combo-glow-text', glowText.toFixed(0) + 'px');
+      frameEl.style.setProperty('--combo-border', border.toFixed(1) + 'px');
+      frameEl.style.setProperty('--combo-glow',   glow.toFixed(0) + 'px');
+      frameEl.classList.add('combo');
+      for (const el of [comboEl, comboMEl, pendingEl, pendingMEl]) if (el) el.classList.add('wta-combo-rainbow');
     } else {
-      gridEl.classList.remove('combo');
+      frameEl.classList.remove('combo');
+      for (const el of [comboEl, comboMEl, pendingEl, pendingMEl]) if (el) el.classList.remove('wta-combo-rainbow');
     }
 
-    // Score / level
-    setText([scoreEl, scoreMEl], game.score);
-    const pendingTxt = game.pendingScore > 0 ? `+${game.pendingScore}` : '';
+    // Score / level — integer count-up: compute step per frame so it takes ~1.5s at 30fps
+    if (game.score !== this._scoreTo) {
+      this._scoreTo    = game.score;
+      const delta      = this._scoreTo - this._displayScore;
+      const frames     = 45; // ~1.5s at 30fps
+      this._scoreStep  = Math.max(1, Math.ceil(delta / frames));
+    }
+    if (this._displayScore < this._scoreTo) {
+      this._displayScore = Math.min(this._scoreTo, this._displayScore + this._scoreStep);
+    }
+    setText([scoreEl, scoreMEl], this._displayScore);
+    const pendingTxt = game.chips > 0 ? `${game.chips} × ${game.mult}` : '';
     setText([pendingEl, pendingMEl], pendingTxt);
     setText([levelEl, levelMEl], game.level);
-    const nextLevelScore = Math.round(500 * Math.pow(2, game.level - 1));
-    if (levelSubEl) levelSubEl.textContent = `next level: ${nextLevelScore}`;
+    const ptsToNext = Math.max(0, game.nextLevelScore - game.score);
+    if (levelSubEl) levelSubEl.textContent = `next: ${ptsToNext} pts`;
 
     // Combo bar
+    setText([comboEl, comboMEl], `\u00d7${Math.max(1, game.comboLevel)}`);
     if (game.comboStop > 0) {
-      const comboTxt = `\u00d7${game.comboCount}`;
-      setText([comboEl, comboMEl], comboTxt);
       const pct = Math.min(100, (game.comboStop / game.freezeCap) * 100);
       const barColor = game.comboCount >= 4 ? '#f84' : '#5af';
       for (const bar of [comboBarEl, comboBarEl2]) {
@@ -255,7 +311,6 @@ class WebRenderer {
         bar.style.background = barColor;
       }
     } else {
-      setText([comboEl, comboMEl], '\u2014');
       for (const bar of [comboBarEl, comboBarEl2]) if (bar) bar.style.width = '0%';
     }
 
