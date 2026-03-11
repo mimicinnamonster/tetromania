@@ -172,7 +172,7 @@ After a swap, `_gravityDelay = 100` ms is set instead of immediately calling `_s
 ## Web Renderer Notes
 
 - CSS grid of `.wta-cell` divs with `border-radius: 20%` and inset highlight box-shadow
-- Cell size: `calc((100vh - 39px) / 12)` — accounts for 3px padding×2 + 3px gap×11
+- Cell size: `calc((100dvh - 55px) / 12)` — 39px for grid overhead (padding×2 + gap×11) + 16px breathing room so top/bottom borders aren't clipped
 - Cursor: single absolutely-positioned `#wta-cursor` div using `getBoundingClientRect()` for exact placement; `border-radius: calc((100vh-39px)/12*0.2)` matches block rounding
 - Rainbow border: `#wta-grid.combo` + `@keyframes wta-rainbow` on `outline-color` + glow; `--rainbow-period` CSS var controls speed
 - Overclock glow: `#wta-grid.overclock` orange box-shadow
