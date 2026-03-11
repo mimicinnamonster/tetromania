@@ -18,6 +18,7 @@ class WebRenderer {
     const gridEl = document.getElementById('wta-grid');
     gridEl.innerHTML = '';
     gridEl.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
+    gridEl.style.gridTemplateRows    = '';  // let rows size from cell content (aspect-ratio on mobile)
     this._cells   = [];
     this._animCls = [];
     for (let r = 0; r < ROWS; r++) {
@@ -29,7 +30,6 @@ class WebRenderer {
         this._animCls.push('');
       }
     }
-    gridEl.style.gridTemplateRows = `repeat(${ROWS}, 1fr)`;
     this._built  = true;
     this._layout = null;
   }

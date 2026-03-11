@@ -468,13 +468,14 @@ body {
 
   #wta-grid {
     width: 100%;
-    height: 100%;
+    height: auto; /* height driven by square cells, not the container */
   }
 
-  /* Cells size themselves to fill the grid — no fixed px */
+  /* Square cells: width from 4-col grid, height matches width */
   .wta-cell {
     width: auto;
     height: auto;
+    aspect-ratio: 1;
     border-radius: 15%;
   }
 
