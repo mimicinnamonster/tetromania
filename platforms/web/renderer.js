@@ -5,8 +5,7 @@
 class WebRenderer {
   constructor() {
     this._cells        = [];
-    this._previewCells = [];   // COLS absolutely-positioned cells inside #wta-grid for the incoming row
-    this._built        = false;
+this._built        = false;
     this._overlayState = null;
     this._fallingPool  = [];   // pool of overlay divs for smooth sub-row falling
     this._prevFalling  = [];   // fallingBlocks snapshot {col, targetRow} from last frame
@@ -22,11 +21,12 @@ class WebRenderer {
     const gridEl = document.getElementById('wta-grid');
     gridEl.innerHTML = '';
     gridEl.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
-    gridEl.style.gridTemplateRows    = '';  // let rows size from cell content (aspect-ratio on mobile)
-    gridEl.style.position            = 'relative'; // contain absolutely-positioned preview cells
+    gridEl.style.gridTemplateRows    = '';
+    gridEl.style.position            = 'relative';
     this._cells   = [];
     this._animCls = [];
-    for (let r = 0; r < ROWS; r++) {
+    // Render ROWS+1 rows — the last row is the preview/incoming row, revealed by translateY.
+    for (let r = 0; r <= ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const div = document.createElement('div');
         div.className = 'wta-cell';
@@ -35,25 +35,13 @@ class WebRenderer {
         this._animCls.push('');
       }
     }
-    // Preview cells: absolutely positioned inside #wta-grid, one row below content.
-    // They travel with the grid's translateY, sliding into view from below.
-    this._previewCells = [];
-    for (let c = 0; c < COLS; c++) {
-      const div = document.createElement('div');
-      div.className = 'wta-cell';
-      div.style.position = 'absolute';
-      gridEl.appendChild(div);
-      this._previewCells.push(div);
-    }
     this._built  = true;
     this._layout = null;
   }
 
   _getLayout(gridEl, wrap) {
     if (this._layout) return this._layout;
-    // Origins must be relative to wrap (the positioned ancestor of overlay divs and cursor)
-    const wrapRect  = wrap.getBoundingClientRect();
-    const gridRect  = gridEl.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
     const r0 = this._cells[0].getBoundingClientRect();
     const r1 = this._cells[COLS].getBoundingClientRect();
     const c1 = this._cells[1].getBoundingClientRect();
@@ -65,19 +53,6 @@ class WebRenderer {
       gapH:  r1.top  - r0.bottom,
       gapW:  c1.left - r0.right,
     };
-    // Position preview cells inside gridEl (absolute, in grid's own coordinate space).
-    // r0 relative to grid: cell[0] top/left within gridEl.
-    const rowStep = this._layout.cellH + this._layout.gapH;
-    const colStep = this._layout.cellW + this._layout.gapW;
-    const cellTopInGrid  = r0.top  - gridRect.top;
-    const cellLeftInGrid = r0.left - gridRect.left;
-    for (let c = 0; c < COLS; c++) {
-      const div = this._previewCells[c];
-      div.style.top    = (cellTopInGrid  + ROWS * rowStep) + 'px';
-      div.style.left   = (cellLeftInGrid + c * colStep) + 'px';
-      div.style.width  = this._layout.cellW + 'px';
-      div.style.height = this._layout.cellH + 'px';
-    }
     return this._layout;
   }
 
@@ -187,7 +162,7 @@ class WebRenderer {
     // (setting the same animation class again does NOT restart the animation).
     const animNeeded = []; // [{idx, cls}] — cells starting a new animation this frame
 
-    for (let r = 0; r < ROWS; r++) {
+    for (let r = 0; r <= ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const idx = r * COLS + c;
         const div = this._cells[idx];
@@ -232,11 +207,6 @@ class WebRenderer {
       }
     }
 
-    // ── Preview (incoming) row ───────────────────────────────────────────────
-    for (let c = 0; c < COLS; c++) {
-      this._previewCells[c].dataset.color = game.grid[ROWS]?.[c] || '';
-    }
-
     // ── Rise animation: translate grid up continuously ───────────────────────
     gridEl.style.transform = riseShift > 0 ? `translateY(-${riseShift.toFixed(2)}px)` : '';
 
@@ -244,8 +214,8 @@ class WebRenderer {
     const showCursor = game.state !== 'picking' && game.state !== 'gameOver';
     const cr = game.cursorRow, cc = game.cursorCol;
     if (showCursor) {
-      const c0 = cr === ROWS ? this._previewCells[cc]     : this._cells[cr * COLS + cc];
-      const c1 = cr === ROWS ? this._previewCells[cc + 1] : this._cells[cr * COLS + cc + 1];
+      const c0 = this._cells[cr * COLS + cc];
+      const c1 = this._cells[cr * COLS + cc + 1];
       const wrapRect = wrap.getBoundingClientRect();
       const b0 = c0.getBoundingClientRect();
       const b1 = c1.getBoundingClientRect();

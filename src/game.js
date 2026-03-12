@@ -256,13 +256,14 @@ class Game {
   _startGravity(chainAfter) {
     this._fallChain = chainAfter;
     const newFalling = [];
+    const H = this.grid.length; // include preview row so gravity fills to the true bottom
     for (let c = 0; c < COLS; c++) {
       const blocks = [];
-      for (let r = 0; r < ROWS; r++)
+      for (let r = 0; r < H; r++)
         if (this.grid[r][c]) blocks.push({ color: this.grid[r][c], fromRow: r });
-      for (let r = 0; r < ROWS; r++) this.grid[r][c] = 0;
+      for (let r = 0; r < H; r++) this.grid[r][c] = 0;
       blocks.forEach((b, i) => {
-        const targetRow = ROWS - blocks.length + i;
+        const targetRow = H - blocks.length + i;
         if (targetRow !== b.fromRow) newFalling.push({ color: b.color, col: c, row: b.fromRow, targetRow });
         else this.grid[b.fromRow][c] = b.color;
       });
@@ -278,18 +279,6 @@ class Game {
     if (this.cursorRow > 0) this.cursorRow--;
     for (const b of this.fallingBlocks) { b.row--; b.targetRow--; }
     this.fallingBlocks = this.fallingBlocks.filter(b => b.targetRow >= 0);
-    // After rise the new bottom row (old preview) may have empty cells; extend each
-    // column's bottom-most falling block down to the lowest empty position, shifting
-    // all blocks in that column by the same amount.
-    const colBlocks = {};
-    for (const b of this.fallingBlocks) (colBlocks[b.col] ??= []).push(b);
-    for (const blocks of Object.values(colBlocks)) {
-      blocks.sort((a, b) => a.targetRow - b.targetRow);
-      const bottom = blocks[blocks.length - 1];
-      let extra = 0;
-      while (bottom.targetRow + extra + 1 < ROWS && this.grid[bottom.targetRow + extra + 1][bottom.col] === 0) extra++;
-      if (extra > 0) for (const b of blocks) b.targetRow += extra;
-    }
     this.abilities.emit('rowAdded');
     this.grid[ROWS] = generateRow(this.grid);
   }

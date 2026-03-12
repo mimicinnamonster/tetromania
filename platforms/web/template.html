@@ -32,6 +32,8 @@ body {
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  /* Clip to exactly 12 rows so the 13th (preview) row is hidden until rise animation reveals it */
+  height: calc((100dvh - 55px) + 39px);
 }
 
 #wta-grid {
@@ -499,7 +501,7 @@ body {
 
   #wta-grid {
     width:  calc(var(--cell) * 6 + 21px);
-    height: calc(var(--cell) * 12 + 39px);
+    height: calc(var(--cell) * 13 + 42px); /* 13 rows; 13th overflows wrap and gets clipped */
     flex-shrink: 0;
   }
 
