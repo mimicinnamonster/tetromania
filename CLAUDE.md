@@ -64,8 +64,8 @@ The bundler strips `require()`/`module.exports` lines and injects all source fil
 | `BASE_RISE_MS` | game.js | 4000 ms |
 | `MIN_RISE_MS` | game.js | 500 ms |
 | `FALL_SPEED` | game.js | 18 rows/s |
-| `COMBO_STOP_BASE` | game.js | 1500 ms |
-| `COMBO_STOP_CHAIN` | game.js | 800 ms |
+| `COMBO_STOP_BASE` | game.js | 9000 ms |
+| `COMBO_STOP_CHAIN` | game.js | 2400 ms |
 | FPS | engine.js | 30 |
 
 ## Game States
@@ -83,10 +83,12 @@ Rise is blocked during `clearing`, while `fallingBlocks.length > 0`, while `_gra
 
 ## Grid Convention
 
-- `grid[0]` = top row, `grid[ROWS-1]` = bottom
+- `grid` has `ROWS + 1` rows (indices `0..ROWS`): rows `0..ROWS-1` are the visible game area; `grid[ROWS]` is the preview/incoming row
+- `grid[0]` = top visible row, `grid[ROWS-1]` = bottom visible row, `grid[ROWS]` = preview row (slides up into view)
+- Gravity (`_startGravity`) uses `this.grid.length` as height, so blocks fill all the way to `grid[ROWS]` (the preview slot) — no hover-above-empty-space possible
 - Cell value `0` = empty, `1–6` = block color
 - `clearing` is `Set<"r,c">` of cells in flash animation
-- Cursor `(cursorRow, cursorCol)` selects pair `[col, col+1]`
+- Cursor `(cursorRow, cursorCol)` selects pair `[col, col+1]`; `cursorRow === ROWS` selects the preview row
 
 ## Scoring
 
@@ -171,9 +173,10 @@ After a swap, `_gravityDelay = 100` ms is set instead of immediately calling `_s
 
 ## Web Renderer Notes
 
-- CSS grid of `.wta-cell` divs with `border-radius: 20%` and inset highlight box-shadow
-- Cell size: `calc((100dvh - 55px) / 12)` — 39px for grid overhead (padding×2 + gap×11) + 16px breathing room so top/bottom borders aren't clipped
-- Cursor: single absolutely-positioned `#wta-cursor` div using `getBoundingClientRect()` for exact placement; `border-radius: calc((100vh-39px)/12*0.2)` matches block rounding
+- CSS grid of `(ROWS+1)×COLS` `.wta-cell` divs — the 13th row is the preview row, hidden below `#wta-grid-wrap` (`overflow: hidden`) and revealed by `translateY` as it rises
+- `#wta-grid-wrap` has a fixed height matching exactly ROWS rows; the 13th row overflows and is clipped until the rise animation brings it into view
+- Cell size (desktop): `calc((100dvh - 55px) / 12)` — 39px grid overhead + 16px breathing room so rounded corners aren't clipped
+- Cursor: single absolutely-positioned `#wta-cursor` div using `getBoundingClientRect()` for exact placement; `border-radius: calc((100dvh-55px)/12*0.2)` matches block rounding
 - Rainbow border: `#wta-grid.combo` + `@keyframes wta-rainbow` on `outline-color` + glow; `--rainbow-period` CSS var controls speed
 - Overclock glow: `#wta-grid.overclock` orange box-shadow
 - Pending score shown as `+N` in amber below score value

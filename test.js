@@ -321,7 +321,7 @@ test('chips=0 mid-fall, chips>0 only after all blocks land', () => {
   // Simpler: place a block in row 0 (top) above two matching blocks, so it has to fall far
   g.grid[ROWS - 1][0] = 1;
   g.grid[ROWS - 1][1] = 1;
-  g.grid[0][2] = 1; // floats at top — will fall to row ROWS-1
+  g.grid[0][2] = 1; // floats at top — will fall to row ROWS (preview slot, the true bottom)
 
   // Start gravity manually (as if a swap had triggered it)
   g._startGravity(0);
@@ -331,8 +331,8 @@ test('chips=0 mid-fall, chips>0 only after all blocks land', () => {
   eq(g.chips, 0, 'chips must be 0 while blocks are still falling');
   eq(g.score, 0, 'score must be 0 while blocks are still falling');
 
-  // Advance partway through the fall (block starts at row 0, target row ROWS-1 = 11)
-  // At FALL_SPEED=18 rows/s, 11 rows takes ~611ms. Advance 200ms — block mid-fall.
+  // Advance partway through the fall (block at row 0 targets row ROWS = 12)
+  // At FALL_SPEED=18 rows/s, 12 rows takes ~667ms. Advance 200ms — block mid-fall.
   advance(g, 200);
   ok(g.fallingBlocks.length > 0, 'block should still be falling after 200ms');
   eq(g.chips, 0, 'chips must still be 0 mid-fall');
@@ -360,6 +360,45 @@ test('score/chips stay 0 throughout full fall when no match forms', () => {
 
   eq(g.chips, 0, 'chips=0 after fall with no match');
   eq(g.score, 0, 'score=0 after fall with no match');
+});
+
+console.log('\nGravity fills to preview row (ROWS = grid.length-1)');
+test('lone block falls to ROWS (preview slot), not ROWS-1', () => {
+  const g = makeGame();
+  g.grid[0][0] = 1; // single block at top of empty column
+  g._startGravity(0);
+  advanceUntil(g, x => x.fallingBlocks.length === 0);
+  eq(g.grid[ROWS][0], 1, 'block should land in preview row (index ROWS)');
+  eq(g.grid[ROWS - 1][0], 0, 'row ROWS-1 should be empty');
+});
+
+test('two blocks in a column pack to ROWS-1 and ROWS', () => {
+  const g = makeGame();
+  g.grid[ROWS - 1][0] = 2; // block near bottom
+  g.grid[0][0] = 1;        // block at top
+  g._startGravity(0);
+  advanceUntil(g, x => x.fallingBlocks.length === 0);
+  // gravity packs the whole column to the absolute bottom (ROWS = preview slot)
+  eq(g.grid[ROWS - 1][0], 1, 'top block lands at ROWS-1');
+  eq(g.grid[ROWS][0], 2, 'bottom block falls to ROWS (preview slot)');
+});
+
+test('no hover after rise: block targets ROWS, rise fires, block ends at ROWS-1', () => {
+  const g = makeGame();
+  // Empty column — block falls to ROWS (preview slot)
+  g.grid[0][0] = 1;
+  g._startGravity(0);
+  // Let it fall partway, then simulate a rise
+  advance(g, 300); // mid-fall
+  ok(g.fallingBlocks.length > 0, 'still falling');
+  // Force a rise (would normally trigger via timer)
+  g._rise();
+  // After rise: block targetRow decremented from ROWS to ROWS-1
+  // grid[ROWS-1][0] is the old preview content (empty in makeGame)
+  // Block should target ROWS-1 (no empty row below since new preview just generated)
+  advanceUntil(g, x => x.fallingBlocks.length === 0);
+  eq(g.grid[ROWS - 1][0], 1, 'block lands at ROWS-1 (bottom of main grid) after rise');
+  eq(g.grid[ROWS - 2][0], 0, 'no hover: ROWS-2 is empty');
 });
 
 // ─── Summary ──────────────────────────────────────────────────────────────────
